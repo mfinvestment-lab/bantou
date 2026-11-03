@@ -11,7 +11,7 @@ export const TT_PROPS = {
   "nel.shizuoka": { propId: BEDS24_PROPERTIES["nel.shizuoka"].propId, cal: CALENDARS.shizuoka,   clean: "nel.",    sameDay: "nel.当日イン",    stay: "nel連泊中",   labelClean: 1, labelStay: 3 }
 };
 const TAG = /#B(\d+)\s+(clean|stay)\b/;
-const HORIZON_DAYS = 120;      // 何日先まで同期するか
+const HORIZON_DAYS = 365;      // 何日先まで同期するか（手入力は半年以上先まであるため）
 const PAST_GRACE_DAYS = 1;     // 過去は昨日まで見る（今日の削除漏れ対策）
 const ymdOf = ms => new Date(ms).toISOString().slice(0, 10);
 const shiftYmd = (ymd, days) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
