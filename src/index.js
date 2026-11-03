@@ -56,6 +56,11 @@ export default {
           const { timetreeCheck } = await import("./timetree.js");
           return json(await timetreeCheck(env, { fresh: url.searchParams.get("fresh") === "1" }));
         }
+        if (path === "/admin/timetree-cleanup") {
+          const { cleanupManual } = await import("./ttsync.js");
+          const props = url.searchParams.get("props")?.split(",").map(s => s.trim()).filter(Boolean);
+          return json(await cleanupManual(env, { props, apply: url.searchParams.get("apply") === "1" }));
+        }
         if (path === "/admin/timetree-sync") {
           const { syncTimeTree } = await import("./ttsync.js");
           const props = url.searchParams.get("props")?.split(",").map(s => s.trim()).filter(Boolean);

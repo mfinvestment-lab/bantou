@@ -31,8 +31,8 @@ OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
 # 一言返し（お礼・到着報告への短い返事）を自動送信するか。"on" 以外はカードで確認
 AUTO_ACK = "off"
 # TimeTree同期: off | dry（計算のみ）| add（追加のみ）| full（削除・変更も）。対象物件は TIMETREE_PROPS（カンマ区切り）
-TIMETREE_SYNC = "off"
-TIMETREE_PROPS = "nel.shizuoka"
+TIMETREE_SYNC = "full"
+TIMETREE_PROPS = "サクヤ,桜ハウス,nel.shizuoka"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）

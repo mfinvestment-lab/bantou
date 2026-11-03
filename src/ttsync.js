@@ -124,3 +124,31 @@ export async function runTimeTreeSync(env) {
     return { error: e.message };
   }
 }
+
+/** 手入力の予定（番頭タグなし）のうち、番頭が管理するタイトルと同じものを一覧／削除する（移行時の一回限りの掃除） */
+export async function cleanupManual(env, { props, apply = false } = {}) {
+  const propNames = props || (env.TIMETREE_PROPS || "").split(",").map(s => s.trim()).filter(Boolean);
+  const today = formatDateYMD(nowJST());
+  const titles = new Set();
+  const cals = new Set();
+  for (const n of propNames) { const p = TT_PROPS[n]; if (!p) continue; cals.add(p.cal); [p.clean, p.sameDay, p.stay].forEach(t => titles.add(t)); }
+  const targets = [];
+  for (const cal of cals) {
+    for (const ev of await ttListEvents(env, cal)) {
+      if (TAG.test(ev.note || "")) continue;              // 番頭の予定は対象外
+      if (!titles.has((ev.title || "").trim())) continue; // タイトルが完全一致する手入力だけ
+      if (ymdOf(ev.end_at) < today) continue;             // 過去は残す
+      targets.push({ cal, eventId: ev.id, title: ev.title, start: ymdOf(ev.start_at), end: ymdOf(ev.end_at), author: ev.author_id });
+    }
+  }
+  targets.sort((a, b) => a.start.localeCompare(b.start));
+  const result = { props: propNames, apply, count: targets.length, targets: targets.map(t => `${t.title} ${t.start}${t.end !== t.start ? "〜" + t.end : ""}`) };
+  if (!apply) return result;
+  result.errors = [];
+  for (const t of targets) {
+    const r = await ttDeleteEvent(env, t.cal, t.eventId);
+    if (r.status !== 200) result.errors.push({ title: t.title, start: t.start, status: r.status });
+  }
+  result.deleted = targets.length - result.errors.length;
+  return result;
+}
