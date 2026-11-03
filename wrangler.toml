@@ -9,7 +9,7 @@ crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *"]  # 5分ごと = ゲストメ�
 # 承認カード・FAQ・学習例の保存先（ダッシュボードで作った KV namespace の ID を入れる）
 [[kv_namespaces]]
 binding = "KV"
-id = "KV_NAMESPACE_ID_HERE"
+id = "d9ecde121a0b4b88be97f0d7afea0541"
 
 [observability]
 enabled = true
