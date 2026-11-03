@@ -11,7 +11,8 @@ enabled = true
 
 # 公開してよい設定値はここ。秘密情報は wrangler secret put か、ダッシュボードの Secrets に入れる。
 [vars]
-# GAS_URL は secret ではないが環境ごとに違うので Variables に入れる（ダッシュボードで設定）
+# GAS（スプレッドシートAPI）のWebアプリURL。ダッシュボードの値と一致させること
+GAS_URL = "https://script.google.com/macros/s/AKfycbwwbxAlixxKSqeCm2mzyxudFfMT--nN3QJNMA5u6spBK6Wt_VldNy250mqnfQbYoYLN/exec"
 # 清掃通知の送信先（LINEグループID）
 LINE_GROUP_FUJINOMIYA_WEEKDAY = "Ca92b75ce78903864c58694356db208d5"
 LINE_GROUP_FUJINOMIYA_HOLIDAY = "Cc2aca0da850e46dfd12c4179364fbbd9"
@@ -23,5 +24,3 @@ OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
 #   SORA_CHANNEL_SECRET, SORA_CHANNEL_ACCESS_TOKEN   … 管理用（旧 明日想い）
 #   BEDS24_REFRESH_TOKEN
-# Variables:
-#   GAS_URL
