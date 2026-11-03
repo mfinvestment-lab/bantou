@@ -12,7 +12,10 @@ HARU（清掃用）と SORA（管理用）の2つのLINE公式アカウントを
 | `src/beds24.js` | Beds24 API（予約取得） |
 | `src/cleaning.js` | 毎朝8時の清掃通知（HARU → 清掃グループ） |
 | `src/inventory.js` | 在庫・発注BOT（HARU ↔ GAS スプレッドシート） |
-| `src/sora.js` | SORA側。今は受信ログのみ。ここに承認カードを足す |
+| `src/sora.js` | SORA側。承認カードのボタン処理と FAQ・ルール・学習例の登録コマンド |
+| `src/approval.js` | 承認カード本体：5分ごとに Beds24 の未読を取得 → AI返信案 → SORAへカード → 承認で OTA へ返信 |
+| `src/claude.js` | Claude API（Haiku既定、自信なしのとき Sonnet）。プロンプトキャッシュ利用 |
+| `src/store.js` | KV：物件ごとの返信ルール・FAQ・学習例、カード状態、既読管理 |
 
 GAS（スプレッドシートAPI）は旧番頭のものをそのまま使う。変更不要。
 
@@ -28,6 +31,8 @@ GAS（スプレッドシートAPI）は旧番頭のものをそのまま使う�
 | `GET /admin/cleaning-run?key=…` | 清掃通知を今すぐ送る（本番グループに届くので注意） |
 | `GET /admin/delivery-run?key=…` | 納品反映を今すぐ実行 |
 | `GET /admin/line-check?key=…` | HARU / SORA のトークンが有効か確認 |
+| `GET /admin/messages-raw?key=…` | Beds24 の未読ゲストメッセージを生で表示（動作確認用） |
+| `GET /admin/messages-poll?key=…` | 新着確認を今すぐ実行（カードが SORA に届く） |
 
 ## 設定（Cloudflare ダッシュボード → Worker → Settings → Variables and Secrets）
 
@@ -41,6 +46,7 @@ Secret（値は暗号化される。コードに書かない）
 | `SORA_CHANNEL_ACCESS_TOKEN` | SORA のチャネルアクセストークン（長期） |
 | `BEDS24_REFRESH_TOKEN` | 旧番頭と同じ値 |
 | `ADMIN_KEY` | 管理用URLの合言葉。長いランダム文字列を自分で決める |
+| `ANTHROPIC_API_KEY` | Claude Console で作成した API キー |
 
 Variable（平文でよい）
 
@@ -48,7 +54,29 @@ Variable（平文でよい）
 | --- | --- |
 | `GAS_URL` | 旧番頭と同じ値（script.google.com/macros/s/…/exec） |
 
-グループIDと管理者IDは `wrangler.toml` の `[vars]` に入っている。
+| `SORA_TARGET_ID`（任意） | 承認カードの送り先（グループID）。未設定なら OWNER_USER_ID（1対1） |
+
+グループIDと管理者IDは `wrangler.toml` の `[vars]` に入っている。KV namespace の ID も `wrangler.toml` の `[[kv_namespaces]]` に入れる。
+
+## 承認カードの使い方（SORA）
+
+5分ごとに Beds24 の未読ゲストメッセージを確認し、返信案付きのカードが届く。
+- ［このまま送信］… AI案を OTA へ送信
+- ［修正して送信］… 次に入力した文面を送信し、学習例として保存
+- ［自分で書く］… 同上（AI案なしで入力）
+- 返金・鍵・法令に関わるものはボタンが［自分で書く］［対応しない］だけになる
+
+登録コマンド（SORA に送る）
+```
+FAQ追加 サクヤ
+Q: 駐車場はありますか？
+A: 敷地内に1台無料でご利用いただけます。
+
+FAQ一覧 サクヤ　／　FAQ削除 サクヤ 3
+ルール設定 サクヤ（改行してルール本文）　／　ルール表示 サクヤ
+学習一覧 サクヤ　／　学習削除 サクヤ 5
+新着確認　／　ヘルプ
+```
 
 ## デプロイ手順（初回）
 

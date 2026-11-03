@@ -3,6 +3,7 @@ import { haru, sora, handleWebhook, sourceIdOf } from "./line.js";
 import { runCleaningNotification, collectFacilityInfo } from "./cleaning.js";
 import { handleInventoryMessage, runDeliveryCheck } from "./inventory.js";
 import { handleSoraEvent } from "./sora.js";
+import { pollGuestMessages } from "./approval.js";
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj, null, 2), { status, headers: { "Content-Type": "application/json; charset=utf-8" } });
@@ -44,6 +45,11 @@ export default {
         if (path === "/admin/cleaning-preview") return json(await collectFacilityInfo(env));
         if (path === "/admin/cleaning-run") return json(await runCleaningNotification(env));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
+        if (path === "/admin/messages-poll") return json(await pollGuestMessages(env));
+        if (path === "/admin/messages-raw") {
+          const { getToken, fetchUnreadGuestMessages } = await import("./beds24.js");
+          return json(await fetchUnreadGuestMessages(await getToken(env), 7));
+        }
         if (path === "/admin/line-check") {
           const check = async token => {
             const r = await fetch("https://api.line.me/v2/bot/info", { headers: { Authorization: `Bearer ${token}` } });
@@ -74,6 +80,12 @@ export default {
       );
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(runDeliveryCheck(env));
+    } else if (event.cron === "*/5 * * * *") {
+      ctx.waitUntil(
+        pollGuestMessages(env)
+          .then(r => { if (r.checked) console.log("メッセージ確認:", JSON.stringify(r)); })
+          .catch(err => { console.error("メッセージ確認エラー:", err.message); })
+      );
     }
   }
 };

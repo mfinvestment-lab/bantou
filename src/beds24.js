@@ -53,3 +53,49 @@ export function nightsBetween(arrival, departure) {
   const d = new Date(departure + "T00:00:00+09:00");
   return Math.max(1, Math.round((d - a) / 86400000));
 }
+
+// ---- ゲストメッセージ ----
+async function api(token, path, opt = {}) {
+  const res = await fetch(`https://beds24.com/api/v2${path}`, {
+    ...opt,
+    headers: { accept: "application/json", "Content-Type": "application/json", token, ...(opt.headers || {}) }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Beds24 ${opt.method || "GET"} ${path} エラー: ${JSON.stringify(data).slice(0, 300)}`);
+  return data;
+}
+
+// 未読のゲストメッセージ（直近 maxAge 日）
+export async function fetchUnreadGuestMessages(token, maxAgeDays = 2) {
+  const d = await api(token, `/bookings/messages?source=guest&filter=unread&maxAge=${maxAgeDays}`);
+  return d.data || d || [];
+}
+
+// 予約IDのスレッド（直近）
+export async function fetchThread(token, bookingId, maxAgeDays = 30) {
+  const d = await api(token, `/bookings/messages?bookingId=${bookingId}&maxAge=${maxAgeDays}`);
+  return d.data || d || [];
+}
+
+export async function fetchBooking(token, bookingId) {
+  const d = await api(token, `/bookings?id=${bookingId}&includeInvoiceItems=false`);
+  const list = d.data || d || [];
+  return list[0] || null;
+}
+
+// ゲストへ返信（Airbnb / Booking.com / Vrbo / email）
+export async function sendGuestMessage(token, bookingId, message) {
+  return api(token, "/bookings/messages", { method: "POST", body: JSON.stringify([{ bookingId, message, source: "host" }]) });
+}
+
+export async function markMessageRead(token, messageId) {
+  return api(token, "/bookings/messages", { method: "POST", body: JSON.stringify([{ id: messageId, read: true }]) });
+}
+
+// 物件ID → 名前
+export async function fetchPropertyMap(token) {
+  const d = await api(token, "/properties");
+  const map = {};
+  for (const p of d.data || d || []) map[String(p.id)] = p.name;
+  return map;
+}

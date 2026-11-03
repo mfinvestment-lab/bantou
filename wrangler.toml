@@ -4,7 +4,12 @@ compatibility_date = "2026-10-01"
 
 # 定期実行（UTC）: 23:00 = 日本時間 8:00 清掃通知 / 00:00 = 日本時間 9:00 納品反映
 [triggers]
-crons = ["0 23 * * *", "0 0 * * *"]
+crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *"]  # 5分ごと = ゲストメッセージ確認
+
+# 承認カード・FAQ・学習例の保存先（ダッシュボードで作った KV namespace の ID を入れる）
+[[kv_namespaces]]
+binding = "KV"
+id = "KV_NAMESPACE_ID_HERE"
 
 [observability]
 enabled = true
@@ -24,3 +29,6 @@ OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
 #   SORA_CHANNEL_SECRET, SORA_CHANNEL_ACCESS_TOKEN   … 管理用（旧 明日想い）
 #   BEDS24_REFRESH_TOKEN
+#   ANTHROPIC_API_KEY   … Claude API（承認カードの返信案）
+# 任意の Variables:
+#   SORA_TARGET_ID … 承認カードの送り先（未設定なら OWNER_USER_ID）
