@@ -1,0 +1,27 @@
+name = "bantou"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# 定期実行（UTC）: 23:00 = 日本時間 8:00 清掃通知 / 00:00 = 日本時間 9:00 納品反映
+[triggers]
+crons = ["0 23 * * *", "0 0 * * *"]
+
+[observability]
+enabled = true
+
+# 公開してよい設定値はここ。秘密情報は wrangler secret put か、ダッシュボードの Secrets に入れる。
+[vars]
+# GAS_URL は secret ではないが環境ごとに違うので Variables に入れる（ダッシュボードで設定）
+# 清掃通知の送信先（LINEグループID）
+LINE_GROUP_FUJINOMIYA_WEEKDAY = "Ca92b75ce78903864c58694356db208d5"
+LINE_GROUP_FUJINOMIYA_HOLIDAY = "Cc2aca0da850e46dfd12c4179364fbbd9"
+LINE_GROUP_SHIZUOKA = "C7656ee7a6c9e66e39154ccf05a9e76a3"
+# 管理者（エラー通知・納品反映の送り先）
+OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
+
+# 必要な Secrets（wrangler secret put <NAME>）:
+#   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
+#   SORA_CHANNEL_SECRET, SORA_CHANNEL_ACCESS_TOKEN   … 管理用（旧 明日想い）
+#   BEDS24_REFRESH_TOKEN
+# Variables:
+#   GAS_URL
