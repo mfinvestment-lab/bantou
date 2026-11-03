@@ -9,6 +9,7 @@ const FACILITY = {
   "nel.shizuoka": { checkin: "16:00", groups: ["LINE_GROUP_SHIZUOKA"] }
 };
 const EARLY_CUTOFF = "15:00";   // これより前に清掃が終わったときだけアーリーイン案内
+const EARLY_FROM = "09:00";     // 早朝・深夜の誤操作で案内しない
 const EARLY_OFFSET_MIN = 30;    // 終了から何分後に入れるか
 
 const hhmm = d => d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tokyo" });
@@ -115,6 +116,7 @@ async function notifySameDayGuest(env, facility, date, now, cur, { test = false,
     arrivals = (await getBookings(token, `propertyId=${p.propId}&arrivalFrom=${date}&arrivalTo=${date}&includeInfoItems=true`)).filter(b => b.status !== "cancelled");
     if (!arrivals.length) return { sent: false, reason: "当日インなし" };
     if (nowHm >= EARLY_CUTOFF) return { sent: false, reason: `${EARLY_CUTOFF}以降の終了のため案内なし（通常${f.checkin}〜）` };
+    if (nowHm < EARLY_FROM) return { sent: false, reason: `${EARLY_FROM}より前の終了のため案内なし` };
     const t = new Date(now.getTime() + EARLY_OFFSET_MIN * 60000);
     t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5, 0, 0);
     const time = hhmm(t);

@@ -53,6 +53,13 @@ export default {
           await haru(env).pushMessages(url.searchParams.get("to") || env.OWNER_USER_ID, [cleaningButtonsMessage(formatDateYMD(new Date()), [{ name: f, text: "テスト（ゲストには送信しません）" }], { test: url.searchParams.get("live") !== "1" })]);
           return json({ ok: true, facility: f });
         }
+        if (path === "/admin/booking-info") {
+          const { getToken } = await import("./beds24.js");
+          const token = await getToken(env);
+          const r = await fetch(`https://beds24.com/api/v2/bookings?id=${url.searchParams.get("id")}&includeInfoItems=true&includeInvoiceItems=false`, { headers: { accept: "application/json", token } });
+          const b = ((await r.json()).data || [])[0] || {};
+          return json({ id: b.id, name: `${b.firstName || ""} ${b.lastName || ""}`, arrival: b.arrival, departure: b.departure, status: b.status, infoItems: b.infoItems });
+        }
         if (path === "/admin/cleaning-status") return json(await todayCleaningStatus(env, url.searchParams.get("d") || undefined));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
