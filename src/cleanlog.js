@@ -20,7 +20,8 @@ const rec = {
 const pb = (label, data, style = "secondary") => ({ type: "button", style, height: "sm", action: { type: "postback", label, data, displayText: label } });
 
 /** 清掃通知に付けるボタン（物件ごとに1枚） */
-export function cleaningButtonsMessage(date, facilities) {
+export function cleaningButtonsMessage(date, facilities, { test = false } = {}) {
+  const tq = test ? "&t=1" : "";
   const bubbles = facilities.map(({ name, text }) => ({
     type: "bubble", size: "kilo",
     body: { type: "box", layout: "vertical", spacing: "sm", contents: [
@@ -28,8 +29,8 @@ export function cleaningButtonsMessage(date, facilities) {
       { type: "text", text, size: "sm", color: "#555555", wrap: true }
     ] },
     footer: { type: "box", layout: "horizontal", spacing: "sm", contents: [
-      pb("清掃開始", `act=cstart&f=${encodeURIComponent(name)}&d=${date}`, "primary"),
-      pb("清掃終了", `act=cend&f=${encodeURIComponent(name)}&d=${date}`)
+      pb("清掃開始", `act=cstart&f=${encodeURIComponent(name)}&d=${date}${tq}`, "primary"),
+      pb("清掃終了", `act=cend&f=${encodeURIComponent(name)}&d=${date}${tq}`)
     ] }
   }));
   return { type: "flex", altText: "清掃の開始・終了ボタン", contents: bubbles.length === 1 ? bubbles[0] : { type: "carousel", contents: bubbles } };
@@ -49,7 +50,8 @@ export async function handleCleaningPostback(env, event) {
   if (!["cstart", "cend", "cendok", "cendno"].includes(act)) return false;
   const line = haru(env);
   const facility = decodeURIComponent(params.get("f") || "");
-  const date = params.get("d") || formatDateYMD(new Date());
+  const test = params.get("t") === "1";
+  const date = (params.get("d") || formatDateYMD(new Date())) + (test ? ":test" : "");
   const groupId = event.source.groupId || null;
   const userId = event.source.userId;
   if (!allowedGroup(env, facility, groupId)) { await line.reply(event.replyToken, `${facility} のボタンはこのグループでは使えません。`); return true; }
@@ -72,8 +74,8 @@ export async function handleCleaningPostback(env, event) {
       contents: { type: "bubble", size: "kilo",
         body: { type: "box", layout: "vertical", contents: [{ type: "text", text: `${facility} の清掃を終了にしますか？`, wrap: true, weight: "bold" }, { type: "text", text: "当日チェックインのゲストがいる場合、ゲストに「準備ができました」の案内が自動で送られます。", size: "xs", color: "#888888", wrap: true, margin: "sm" }] },
         footer: { type: "box", layout: "horizontal", spacing: "sm", contents: [
-          pb("はい、終了", `act=cendok&f=${encodeURIComponent(facility)}&d=${date}`, "primary"),
-          pb("いいえ", `act=cendno&f=${encodeURIComponent(facility)}&d=${date}`)
+          pb("はい、終了", `act=cendok&f=${encodeURIComponent(facility)}&d=${params.get("d")}${test ? "&t=1" : ""}`, "primary"),
+          pb("いいえ", `act=cendno&f=${encodeURIComponent(facility)}&d=${params.get("d")}${test ? "&t=1" : ""}`)
         ] } }
     }]);
     return true;
@@ -87,13 +89,14 @@ export async function handleCleaningPostback(env, event) {
   const dur = cur.startAt ? Math.round((now - new Date(cur.startAt)) / 60000) : null;
   await rec.put(env.KV, date, facility, cur);
 
-  const early = await notifySameDayGuest(env, facility, date, now, cur);
-  const staffMsg = `✅ ${facility} 清掃終了 ${hhmm(now)}（${who}さん${dur != null ? `・${dur}分` : ""}）` + (early.sent ? `\n当日インのゲストに「${early.time}からチェックインOK」を案内しました。` : early.reason ? `\n（${early.reason}）` : "");
+  const early = await notifySameDayGuest(env, facility, params.get("d") || formatDateYMD(new Date()), now, cur, { test, recDate: date });
+  const staffMsg = `${test ? "【テスト】" : ""}✅ ${facility} 清掃終了 ${hhmm(now)}（${who}さん${dur != null ? `・${dur}分` : ""}）` + (early.sent ? (test ? `\n（テストなので送信せず）当日イン ${early.guest}様 に送る文面：\n${early.results[0].preview}` : `\n当日インのゲストに「${early.time}からチェックインOK」を案内しました。`) : early.reason ? `\n（${early.reason}）` : "");
   await line.reply(event.replyToken, staffMsg);
 
   // 管理者（SORA）にも1行
   try {
     const target = env.SORA_TARGET_ID || env.OWNER_USER_ID;
+    if (test) return true;
     const text = `🧹 ${facility} 清掃終了 ${hhmm(now)} ${who}さん${dur != null ? `（${dur}分）` : ""}` + (early.sent ? `\n→ ${early.guest}様（${early.channel}）にアーリーイン案内（${early.time}〜）を送信` : early.reason ? `\n→ ${early.reason}` : "");
     await sora(env).push(target, text);
   } catch (e) { console.error("SORA通知失敗", e.message); }
@@ -101,7 +104,7 @@ export async function handleCleaningPostback(env, event) {
 }
 
 /** 当日チェックインのゲストに「準備できました」を送る。15:00より前の終了のみ */
-async function notifySameDayGuest(env, facility, date, now, cur) {
+async function notifySameDayGuest(env, facility, date, now, cur, { test = false, recDate = date } = {}) {
   const f = FACILITY[facility];
   const p = BEDS24_PROPERTIES[facility];
   if (!f || !p) return { sent: false, reason: "物件設定なし" };
@@ -122,13 +125,13 @@ async function notifySameDayGuest(env, facility, date, now, cur) {
       const msg = done
         ? `${name} 様\n\nお部屋の清掃が完了しました。本日は ${time} からチェックインいただけます（通常は${f.checkin}〜）。\n入室方法は既にお送りしている当日のご案内をご確認ください。お気をつけてお越しください。`
         : `${name} 様\n\nお部屋の清掃が完了しました。本日は ${time} からチェックインいただけます（通常は${f.checkin}〜）。\n宿泊者名簿のご登録がまだのため、ご登録完了後に入室方法をお送りします。お気をつけてお越しください。`;
-      const r = await sendGuestMessage(token, b.id, msg);
-      results.push({ bookingId: b.id, name, channel: b.channel || b.referer || "直予約", done, status: r?.[0]?.success ?? true });
+      const r = test ? null : await sendGuestMessage(token, b.id, msg);
+      results.push({ bookingId: b.id, name, channel: b.channel || b.referer || "直予約", done, test, status: r?.[0]?.success ?? true, preview: test ? msg : undefined });
     }
     cur.early = { time, results, at: now.toISOString() };
-    await rec.put(env.KV, date, facility, cur);
+    await rec.put(env.KV, recDate, facility, cur);
     const g = results[0];
-    return { sent: true, time, guest: g.name, channel: g.channel, results };
+    return { sent: true, time, guest: g.name, channel: g.channel, results, test };
   } catch (e) {
     console.error("early checkin notify error", e.message);
     return { sent: false, reason: `案内送信エラー: ${e.message.slice(0, 80)}` };

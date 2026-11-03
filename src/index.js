@@ -50,7 +50,7 @@ export default {
           // 管理者の個人チャット（HARU）にテスト用ボタンを送る。物件は ?f=サクヤ
           const f = url.searchParams.get("f") || "nel.shizuoka";
           const { formatDateYMD } = await import("./beds24.js");
-          await haru(env).pushMessages(url.searchParams.get("to") || env.OWNER_USER_ID, [cleaningButtonsMessage(formatDateYMD(new Date()), [{ name: f, text: "テスト" }])]);
+          await haru(env).pushMessages(url.searchParams.get("to") || env.OWNER_USER_ID, [cleaningButtonsMessage(formatDateYMD(new Date()), [{ name: f, text: "テスト（ゲストには送信しません）" }], { test: url.searchParams.get("live") !== "1" })]);
           return json({ ok: true, facility: f });
         }
         if (path === "/admin/cleaning-status") return json(await todayCleaningStatus(env, url.searchParams.get("d") || undefined));
