@@ -53,6 +53,18 @@ export default {
           await haru(env).pushMessages(url.searchParams.get("to") || env.OWNER_USER_ID, [cleaningButtonsMessage(formatDateYMD(new Date()), [{ name: f, text: "テスト（ゲストには送信しません）" }], { test: url.searchParams.get("live") !== "1" })]);
           return json({ ok: true, facility: f });
         }
+        if (path === "/admin/arrivals") {
+          // 指定日（既定: 今日）の到着予約と Info コード（名簿判定の確認用）
+          const { getToken, BEDS24_PROPERTIES, formatDateYMD } = await import("./beds24.js");
+          const token = await getToken(env);
+          const d = url.searchParams.get("d") || formatDateYMD(new Date());
+          const out = {};
+          for (const [name, p] of Object.entries(BEDS24_PROPERTIES)) {
+            const r = await fetch(`https://beds24.com/api/v2/bookings?propertyId=${p.propId}&arrivalFrom=${d}&arrivalTo=${d}&includeInfoItems=true&includeInvoiceItems=false`, { headers: { accept: "application/json", token } });
+            out[name] = ((await r.json()).data || []).map(b => ({ id: b.id, name: `${b.firstName || ""} ${b.lastName || ""}`.trim(), status: b.status, channel: b.channel || b.referer, arrival: b.arrival, departure: b.departure, infoCodes: (b.infoItems || []).map(i => `${i.code}${i.text ? "=" + String(i.text).slice(0, 30) : ""}`) }));
+          }
+          return json({ date: d, arrivals: out });
+        }
         if (path === "/admin/booking-info") {
           const { getToken } = await import("./beds24.js");
           const token = await getToken(env);
