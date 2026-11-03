@@ -5,7 +5,7 @@ import { getToken, fetchPropertyMap } from "./beds24.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -157,11 +157,28 @@ export async function handleSoraEvent(env, event) {
       await line.reply(event.replyToken, r ? `🗑 削除しました\nQ: ${r.q}` : "その番号はありません。");
       return;
     }
-    if (cmd === "ルール設定") {
-      const p = await resolveProperty(env.KV, args[0]); const body = restLines.join("\n").trim();
-      if (!p || !body) { await line.reply(event.replyToken, "形式：\nルール設定 物件名\nルール本文（複数行可）"); return; }
+    if (cmd === "ルール設定" || cmd === "ルール上書き") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const body = [args.slice(1).join(" "), ...restLines].join("\n").trim();
+      if (!p || !body) { await line.reply(event.replyToken, "形式：\nルール設定 物件名\nルール本文（複数行可）\n\n1行だけ足すなら：ルール追記 物件名 追加する文"); return; }
+      const cur = (await rules.get(env.KV, p)) || "";
+      // 既存ルールより大幅に短い本文は誤操作の可能性が高いので止める（ルール上書き で強制）
+      if (cmd === "ルール設定" && cur.length > 300 && body.length < cur.length * 0.3) {
+        await line.reply(event.replyToken, `⚠️ ${p} には既に ${cur.length} 文字のルールがあり、今回の本文は ${body.length} 文字です。全部を置き換えてよければ「ルール上書き ${p}」＋本文で送ってください。\n1行足すだけなら：\nルール追記 ${p} 追加する文`);
+        return;
+      }
       await rules.set(env.KV, p, body);
       await line.reply(event.replyToken, `✅ ${p} の返信ルールを更新しました（${body.length}文字）`);
+      return;
+    }
+    if (cmd === "ルール追記") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const add = [args.slice(1).join(" "), ...restLines].join("\n").trim();
+      if (!p || !add) { await line.reply(event.replyToken, "形式：ルール追記 物件名 追加する文（複数行可）"); return; }
+      const cur = (await rules.get(env.KV, p)) || "";
+      const next = (cur ? cur + "\n" : "") + add;
+      await rules.set(env.KV, p, next);
+      await line.reply(event.replyToken, `✅ ${p} のルールに追記しました（${next.length}文字）\n＋ ${add}`);
       return;
     }
     if (cmd === "ルール表示") {
