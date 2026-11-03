@@ -16,6 +16,16 @@ const MENU = {
   ].slice(0, 13) }
 };
 const withMenu = text => ({ type: "text", text, quickReply: MENU.quickReply });
+const pickProperty = (cmd, label) => ({
+  type: "text", text: `${label}する物件を選んでください`,
+  quickReply: { items: PROPERTIES.map(p => qr(p, `${cmd} ${p}`)) }
+});
+// FAQ追加の対話状態（userId → 物件名）
+const faqMode = {
+  get: (kv, u) => kv.get(`mode:faqadd:${u}`),
+  set: (kv, u, p) => kv.put(`mode:faqadd:${u}`, p, { expirationTtl: 600 }),
+  clear: (kv, u) => kv.delete(`mode:faqadd:${u}`)
+};
 
 export async function handleSoraEvent(env, event) {
   const line = sora(env);
@@ -37,8 +47,35 @@ export async function handleSoraEvent(env, event) {
   const text = event.message.text.trim();
   const [head, ...restLines] = text.split("\n");
   const [cmd, ...args] = head.trim().split(/\s+/);
+  const userId = event.source.userId;
 
   try {
+    // FAQ追加の入力待ち
+    if (env.KV && userId) {
+      const p = await faqMode.get(env.KV, userId);
+      if (p && !/^(FAQ|ルール|学習|新着|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
+        const q = (text.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
+        const a = (text.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
+        if (!q || !a) { await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`); return; }
+        await faqMode.clear(env.KV, userId);
+        const n = await faq.add(env.KV, p, q, a);
+        await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに追加しました（${n}件目）\nQ: ${q}\nA: ${a}`)]);
+        return;
+      }
+      if (p && text === "キャンセル") { await faqMode.clear(env.KV, userId); await line.reply(event.replyToken, "FAQ追加を中止しました。"); return; }
+    }
+
+    // 物件名なしのコマンドは物件選択ボタンを出す
+    if (["FAQ一覧", "FAQ追加", "ルール表示", "学習一覧"].includes(cmd) && args.length === 0 && restLines.length === 0) {
+      await line.replyRaw(event.replyToken, [pickProperty(cmd, cmd)]);
+      return;
+    }
+    if (cmd === "FAQ追加" && args[0] && restLines.length === 0) {
+      const p = normalizeProperty(args[0]);
+      await faqMode.set(env.KV, userId, p);
+      await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`);
+      return;
+    }
     if (text === "ID教えて" || text === "グループID教えて") {
       await line.reply(event.replyToken, `${sourceType} ID：\n${sourceId}\n\nあなたのuserId：\n${event.source.userId || "（取得不可）"}`);
       return;

@@ -76,16 +76,22 @@ async function handleGuestMessage(env, token, m) {
   };
   const draft = await draftReply(env, ctx);
 
-  // 一言返しで済むもの（お礼・到着報告など）は短い返事を自動送信。同じ予約には48時間に1回まで（ラリー防止）
+  // 一言返しで済むもの（お礼・到着報告など）。同じ予約には48時間に1回まで（ラリー防止）
+  // AUTO_ACK=on なら自動送信、それ以外は「一言返し」カードを出して人が［送信］を押す
   if (draft.needsReply === false && !draft.needsHuman) {
     const ackKey = `ack:${m.bookingId}`;
     const already = await env.KV.get(ackKey);
-    if (!already && draft.reply) {
+    if (already || !draft.reply) {
+      await markMessageRead(token, m.id);
+      return { id: m.id, skipped: "一言返し済み（48h以内）", category: draft.category };
+    }
+    if (env.AUTO_ACK === "on") {
       await sendGuestMessage(token, m.bookingId, draft.reply);
       await env.KV.put(ackKey, new Date().toISOString(), { expirationTtl: 60 * 60 * 48 });
+      await markMessageRead(token, m.id);
+      return { id: m.id, auto: `一言返し: ${draft.reply}`, category: draft.category, model: draft.model };
     }
-    await markMessageRead(token, m.id);
-    return { id: m.id, auto: already ? "一言返し済みのため無送信" : `一言返し: ${draft.reply}`, category: draft.category, model: draft.model };
+    draft.ack = true; // カードに「一言返し案」と表示
   }
 
   const cardId = `${m.bookingId}-${m.id}`;
@@ -116,7 +122,7 @@ export function buildCardMessage(card) {
     : [row(postback("送信", "approve", "primary"), postback("修正", "edit", "secondary")), row(postback("自分で書く", "write", "secondary"), postback("対応済み", "done", "secondary"))];
 
   const body = [
-    txt(`${d.needsHuman ? "⚠️ " : ""}${card.property}｜${card.guest}様`, { weight: "bold", size: "md", color: d.needsHuman ? "#c0392b" : "#111111" }),
+    txt(`${d.needsHuman ? "⚠️ " : d.ack ? "💬 " : ""}${card.property}｜${card.guest}様${d.ack ? "（一言返し案）" : ""}`, { weight: "bold", size: "md", color: d.needsHuman ? "#c0392b" : "#111111" }),
     txt(card.guestMessage, { color: "#555555" }),
     sep,
     txt(d.needsHuman ? `要確認：${d.reason}` : d.reply, { margin: "md" })
@@ -196,6 +202,7 @@ async function sendAndRecord(env, card, replyText, meta) {
   await markMessageRead(token, card.messageId);
   card.status = "sent";
   card.sent = { text: replyText, at: new Date().toISOString(), ...meta };
+  if (card.draft?.ack) await env.KV.put(`ack:${card.bookingId}`, new Date().toISOString(), { expirationTtl: 60 * 60 * 48 });
   await cards.put(env.KV, card.id, card);
   // 人が書いた／直した返信だけを学習例にする（AI案をそのまま送った場合は重複になるので保存しない）
   if (meta.how === "manual") await examples.add(env.KV, card.property, card.guestMessage, replyText, { channel: card.channel });

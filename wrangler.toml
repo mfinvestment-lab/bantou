@@ -24,6 +24,8 @@ LINE_GROUP_FUJINOMIYA_HOLIDAY = "Cc2aca0da850e46dfd12c4179364fbbd9"
 LINE_GROUP_SHIZUOKA = "C7656ee7a6c9e66e39154ccf05a9e76a3"
 # 管理者（エラー通知・納品反映の送り先）
 OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
+# 一言返し（お礼・到着報告への短い返事）を自動送信するか。"on" 以外はカードで確認
+AUTO_ACK = "off"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
