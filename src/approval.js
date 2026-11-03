@@ -25,13 +25,13 @@ async function propertyName(env, token, propertyId) {
 }
 
 // ---- 5分ごと：新着を取りに行く ----
-export async function pollGuestMessages(env) {
+export async function pollGuestMessages(env, { force = false } = {}) {
   if (!env.KV) return { error: "KV未設定" };
   const token = await getToken(env);
   const msgs = await fetchUnreadGuestMessages(token);
   const results = [];
   for (const m of msgs) {
-    if (await seen.has(env.KV, m.id)) continue;
+    if (!force && (await seen.has(env.KV, m.id))) { results.push({ id: m.id, skipped: "処理済み" }); continue; }
     await seen.mark(env.KV, m.id);
     try {
       results.push(await handleGuestMessage(env, token, m));

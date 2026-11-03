@@ -45,7 +45,7 @@ export default {
         if (path === "/admin/cleaning-preview") return json(await collectFacilityInfo(env));
         if (path === "/admin/cleaning-run") return json(await runCleaningNotification(env));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
-        if (path === "/admin/messages-poll") return json(await pollGuestMessages(env));
+        if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/messages-raw") {
           const { getToken, fetchUnreadGuestMessages } = await import("./beds24.js");
           return json(await fetchUnreadGuestMessages(await getToken(env), 7));
