@@ -106,6 +106,26 @@ async function handleGuestMessage(env, token, m) {
   return { id: m.id, cardId, category: draft.category, needsHuman: draft.needsHuman, model: draft.model };
 }
 
+// ---- テスト用：Beds24に触らずカードを作る ----
+export async function createTestCard(env, property, text, targetId) {
+  const ctx = {
+    property,
+    rules: await rules.get(env.KV, property),
+    faqs: await faq.list(env.KV, property),
+    examples: (await examples.list(env.KV, property)).slice(0, 20),
+    booking: { channel: "テスト", firstName: "Test", lastName: "Guest", arrival: "2026-12-01", departure: "2026-12-03", numAdult: 2, numChild: 0 },
+    thread: [],
+    guestMessage: text
+  };
+  const draft = await draftReply(env, ctx);
+  if (draft.needsReply === false && !draft.needsHuman) draft.ack = true;
+  const cardId = `test-${Date.now()}`;
+  const card = { id: cardId, test: true, messageId: 0, bookingId: 0, property, guest: "テスト", channel: "テスト", stay: "", guestMessage: text, draft, status: "pending", createdAt: new Date().toISOString() };
+  await cards.put(env.KV, cardId, card);
+  await sora(env).pushMessages(targetId, [buildCardMessage(card)]);
+  return { cardId, draft };
+}
+
 // ---- LINE Flex カード ----
 export function buildCardMessage(card) {
   const d = card.draft;
@@ -151,7 +171,7 @@ export async function handlePostback(env, event) {
 
   if (action === "approve") {
     await sendAndRecord(env, card, card.draft.reply, { by: userId, how: "approve" });
-    await line.reply(event.replyToken, `✅ 送信しました（${card.property} ${card.guest}様）`);
+    await line.reply(event.replyToken, card.test ? `✅（テスト）送信扱いにしました` : `✅ 送信しました（${card.property} ${card.guest}様）`);
     return;
   }
   if (action === "edit" || action === "write") {
@@ -165,8 +185,7 @@ export async function handlePostback(env, event) {
   if (action === "dismiss" || action === "done") {
     card.status = "done";
     await cards.put(env.KV, cardId, card);
-    const token = await getToken(env);
-    await markMessageRead(token, card.messageId);
+    if (!card.test) { const token = await getToken(env); await markMessageRead(token, card.messageId); }
     await line.reply(event.replyToken, `対応済みにしました（${card.property} ${card.guest}様）`);
     return;
   }
@@ -192,14 +211,16 @@ export async function handleAwaitingText(env, event) {
   }
   await cards.awaiting.clear(env.KV, userId);
   await sendAndRecord(env, card, text, { by: userId, how: "manual" });
-  await line.reply(event.replyToken, `✅ 送信しました（${card.property} ${card.guest}様）`);
+  await line.reply(event.replyToken, card.test ? `✅（テスト）送信扱いにし、学習例に保存しました` : `✅ 送信しました（${card.property} ${card.guest}様）`);
   return true;
 }
 
 async function sendAndRecord(env, card, replyText, meta) {
-  const token = await getToken(env);
-  await sendGuestMessage(token, card.bookingId, replyText);
-  await markMessageRead(token, card.messageId);
+  if (!card.test) {
+    const token = await getToken(env);
+    await sendGuestMessage(token, card.bookingId, replyText);
+    await markMessageRead(token, card.messageId);
+  }
   card.status = "sent";
   card.sent = { text: replyText, at: new Date().toISOString(), ...meta };
   if (card.draft?.ack) await env.KV.put(`ack:${card.bookingId}`, new Date().toISOString(), { expirationTtl: 60 * 60 * 48 });

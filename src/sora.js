@@ -1,7 +1,7 @@
 // SORA（管理用）: 承認カードのボタン処理と、FAQ・ルール・学習例の登録コマンド
 import { sora, sourceIdOf } from "./line.js";
 import { rules, faq, examples, normalizeProperty } from "./store.js";
-import { handlePostback, handleAwaitingText, pollGuestMessages } from "./approval.js";
+import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const PROPERTIES = ["サクヤ", "桜ハウス", "nel.shizuoka"];
 const qr = (label, text) => ({ type: "action", action: { type: "message", label, text } });
@@ -92,6 +92,15 @@ export async function handleSoraEvent(env, event) {
     if (text === "ヘルプ" || text === "help" || text === "メニュー") { await line.replyRaw(event.replyToken, [MENU]); return; }
     if (!env.KV) { if (/^(FAQ|ルール|学習|新着)/.test(cmd)) await line.reply(event.replyToken, "KVが未設定のため、登録機能はまだ使えません。"); return; }
 
+    if (cmd === "テスト") {
+      const p = normalizeProperty(args[0]);
+      const q = [args.slice(1).join(" "), ...restLines].join("\n").trim();
+      if (!p || !q) { await line.reply(event.replyToken, "形式：テスト 物件名 ゲストの質問文"); return; }
+      await line.reply(event.replyToken, "返信案を作っています…");
+      const r = await createTestCard(env, p, q, sourceId);
+      console.log("test card", JSON.stringify(r));
+      return;
+    }
     if (cmd === "新着確認") {
       // 処理に時間がかかると reply token が切れるので、先に返事をしてから push で結果を送る
       await line.reply(event.replyToken, "確認中…");
