@@ -42,7 +42,7 @@ export async function draftReply(env, ctx) {
   let r = extractJson(out.text);
   let model = MODELS.fast;
   // Haiku が自信なしのときだけ Sonnet で作り直す
-  if ((r.confidence ?? 0) < 0.6 && !r.needsHuman) {
+  if (r.needsReply !== false && (r.confidence ?? 0) < 0.6 && !r.needsHuman) {
     out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }] });
     r = extractJson(out.text);
     model = MODELS.careful;
@@ -74,8 +74,12 @@ ${faqText}
 ## 過去にスタッフが実際に送った返信例（新しい順）
 ${exText}
 
+## 返信が不要なもの（needsReply を false にする）
+- お礼だけ、「チェックインしました」「着きました」などの報告だけ、「後で送ります」などこちらの返事を待っていないもの
+- ただし質問・要望・不満・トラブルが1つでも含まれていれば needsReply は true
+
 ## 出力形式（JSONのみ、前後に文章を付けない）
-{"category":"question|request|complaint|thanks|other","confidence":0.0〜1.0,"needsHuman":true|false,"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"ゲストの言語での返信本文","replyJa":"replyの日本語訳（ゲストが日本語ならreplyと同じ）"}`;
+{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"ゲストの言語での返信本文","replyJa":"replyの日本語訳（ゲストが日本語ならreplyと同じ）"}`;
 }
 
 function buildUser({ booking, thread, guestMessage }) {

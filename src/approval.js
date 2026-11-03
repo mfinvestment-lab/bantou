@@ -70,6 +70,12 @@ async function handleGuestMessage(env, token, m) {
   };
   const draft = await draftReply(env, ctx);
 
+  // 返信不要（お礼・到着報告など）はカードを出さず既読にする
+  if (draft.needsReply === false && !draft.needsHuman) {
+    await markMessageRead(token, m.id);
+    return { id: m.id, skipped: `返信不要(${draft.category})`, model: draft.model };
+  }
+
   const cardId = `${m.bookingId}-${m.id}`;
   const card = {
     id: cardId, messageId: m.id, bookingId: m.bookingId, property,
