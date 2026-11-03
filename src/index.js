@@ -56,6 +56,10 @@ export default {
           const { timetreeCheck } = await import("./timetree.js");
           return json(await timetreeCheck(env, { fresh: url.searchParams.get("fresh") === "1" }));
         }
+        if (path === "/admin/timetree-test-event") {
+          const { timetreeTestEvent } = await import("./timetree.js");
+          return json(await timetreeTestEvent(env, { keep: url.searchParams.get("keep") === "1" }));
+        }
         if (path === "/admin/timetree-findapi") {
           const { timetreeFindApi } = await import("./timetree.js");
           return json(await timetreeFindApi(env));

@@ -158,3 +158,56 @@ export async function timetreeFindApi(env) {
   const eventHits = hits.filter(h => /event/.test(h.path) || /event/i.test(h.ctx));
   return { scripts: scanned, chunkNames: [...chunkNames].slice(0, 50), eventHits: eventHits.slice(0, 40), otherCalendarPaths: [...new Set(hits.map(h => h.path))].slice(0, 60) };
 }
+
+// ---- 予定の作成・更新・削除（内部API） ----
+export const CALENDARS = { fujinomiya: 104873840, shizuoka: 1011685039 };
+const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 32);
+const dayMs = ymd => Date.parse(`${ymd}T00:00:00Z`); // 終日予定は UTC 0時のミリ秒
+
+export async function ttUserId(env) {
+  const cached = await env.KV.get("timetree:userId");
+  if (cached) return Number(cached);
+  const r = await ttApi(env, "/api/v1/user");
+  const id = r.data?.user?.id;
+  if (!id) throw new Error(`TimeTreeユーザーID取得失敗: ${JSON.stringify(r).slice(0, 200)}`);
+  await env.KV.put("timetree:userId", String(id), { expirationTtl: COOKIE_TTL });
+  return id;
+}
+
+/** 終日予定を作る。startYmd〜endYmd（両端含む、YYYY-MM-DD） */
+export async function ttCreateAllDay(env, calendarId, { title, startYmd, endYmd = startYmd, labelId = 1, note = "" }) {
+  const uid = await ttUserId(env);
+  const body = {
+    id: newId(), category: 1, type: 0, title, all_day: true,
+    start_at: dayMs(startYmd), end_at: dayMs(endYmd), start_timezone: "UTC", end_timezone: "UTC",
+    label_id: labelId, note, location: "", url: null, lunar: false,
+    attendees: [uid], recurrences: [], alerts: [], silent: true
+  };
+  return ttApi(env, `/api/v1/calendar/${calendarId}/event`, { method: "POST", body });
+}
+export async function ttDeleteEvent(env, calendarId, eventId) {
+  return ttApi(env, `/api/v1/calendar/${calendarId}/event/${eventId}`, { method: "DELETE" });
+}
+/** 全予定（削除済みを除く）を取得。sync はページングされる */
+export async function ttListEvents(env, calendarId) {
+  const all = [];
+  let since = null;
+  for (let i = 0; i < 20; i++) {
+    const r = await ttApi(env, `/api/v1/calendar/${calendarId}/events/sync${since ? `?since=${since}` : ""}`);
+    if (r.status !== 200) throw new Error(`TimeTree events/sync ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`);
+    all.push(...(r.data.events || []));
+    if (!r.data.chunk) break;
+    since = r.data.since;
+  }
+  return all.filter(e => !e.deactivated_at);
+}
+
+/** 動作確認: テスト予定を作って削除する */
+export async function timetreeTestEvent(env, { keep = false } = {}) {
+  const cal = CALENDARS.shizuoka;
+  const created = await ttCreateAllDay(env, cal, { title: "番頭テスト #Btest", startYmd: "2027-01-15", labelId: 1, note: "自動テスト。すぐ消えます" });
+  const id = created.data?.event?.id || created.data?.id;
+  let deleted = null;
+  if (id && !keep) deleted = await ttDeleteEvent(env, cal, id);
+  return { created: { status: created.status, id, data: JSON.stringify(created.data).slice(0, 600) }, deleted: deleted && { status: deleted.status, data: JSON.stringify(deleted.data).slice(0, 300) } };
+}
