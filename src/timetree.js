@@ -124,3 +124,37 @@ export async function ttApi(env, path, { method = "GET", body } = {}) {
   let data; try { data = JSON.parse(text); } catch { data = text.slice(0, 500); }
   return { status: res.status, data };
 }
+
+// ---- 診断: Web版のJSから events 関連のAPIパスとHTTPメソッドを探す ----
+export async function timetreeFindApi(env) {
+  const cookies = (await env.KV.get(COOKIE_KEY, "json")) || [];
+  const cookie = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+  const html = await (await fetch("https://timetreeapp.com/calendars", { headers: { cookie, "user-agent": ua } })).text();
+  const scripts = [...new Set([...html.matchAll(/(?:src|href)="([^"]+\.js)"/g)].map(m => m[1]).map(u => u.startsWith("http") ? u : `https://timetreeapp.com${u}`))];
+  const hits = [];
+  const scanned = [];
+  for (const src of scripts.slice(0, 40)) {
+    const js = await (await fetch(src, { headers: { "user-agent": ua } })).text();
+    scanned.push({ src, size: js.length });
+    // 追加で読み込まれる chunk も拾う
+    for (const m of js.matchAll(/["']([^"']*\/api\/v\d\/[^"'`]*)["'`]/g)) {
+      const path = m[1];
+      if (!/calendar/.test(path)) continue;
+      const i = m.index; hits.push({ src: src.split("/").pop(), path, ctx: js.slice(Math.max(0, i - 160), i + 120) });
+    }
+    for (const m of js.matchAll(/`([^`]*\/api\/v\d\/[^`]*)`/g)) {
+      const path = m[1];
+      if (!/calendar.*event/.test(path)) continue;
+      const i = m.index; hits.push({ src: src.split("/").pop(), path, ctx: js.slice(Math.max(0, i - 160), i + 120) });
+    }
+  }
+  // chunk ファイルも探す（assets 配下の .js 名）
+  const chunkNames = new Set();
+  for (const src of scripts.slice(0, 5)) {
+    const js = await (await fetch(src, { headers: { "user-agent": ua } })).text();
+    for (const m of js.matchAll(/["']([\w\-./]+\.js)["']/g)) if (/assets/.test(m[1]) || /^[\w-]+-[\w]{8}\.js$/.test(m[1])) chunkNames.add(m[1]);
+  }
+  const eventHits = hits.filter(h => /event/.test(h.path) || /event/i.test(h.ctx));
+  return { scripts: scanned, chunkNames: [...chunkNames].slice(0, 50), eventHits: eventHits.slice(0, 40), otherCalendarPaths: [...new Set(hits.map(h => h.path))].slice(0, 60) };
+}
