@@ -15,7 +15,7 @@ export async function getToken(env) {
   return data.token;
 }
 
-async function getBookings(token, query) {
+export async function getBookings(token, query) {
   const url = `https://beds24.com/api/v2/bookings?${query}&includeInvoiceItems=false`;
   const res = await fetch(url, { headers: { accept: "application/json", token } });
   const data = await res.json();

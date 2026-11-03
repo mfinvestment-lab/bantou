@@ -2,6 +2,7 @@
 import { sora, sourceIdOf } from "./line.js";
 import { rules, faq, examples, resolveProperty, listProperties, props, aliases } from "./store.js";
 import { getToken, fetchPropertyMap } from "./beds24.js";
+import { importHistory } from "./learn.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
@@ -46,7 +47,7 @@ export async function handleSoraEvent(env, event) {
     // FAQ追加の入力待ち
     if (env.KV && userId) {
       const p = await faqMode.get(env.KV, userId);
-      if (p && !/^(FAQ|ルール|学習|新着|物件|別名|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
+      if (p && !/^(FAQ|ルール|学習|過去学習|新着|物件|別名|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
         const q = (text.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
         const a = (text.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
         if (!q || !a) { await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`); return; }
@@ -112,6 +113,16 @@ export async function handleSoraEvent(env, event) {
     if (cmd === "別名削除") {
       const r = await aliases.remove(env.KV, args[0]);
       await line.reply(event.replyToken, r ? `🗑 「${args[0]}」を削除しました（${r}）` : "その別名はありません。");
+      return;
+    }
+    if (cmd === "過去学習") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const days = Math.min(parseInt(args[1]) || 90, 365);
+      if (!p) { await line.reply(event.replyToken, "形式：過去学習 物件名 [日数=90]\nBeds24の過去スレッドから「質問→スタッフ返信」を学習例に取り込みます。"); return; }
+      await line.reply(event.replyToken, `${p} の過去${days}日分を取り込み中…（1〜2分）`);
+      const r = await importHistory(env, p, days);
+      console.log("importHistory", JSON.stringify(r));
+      await line.pushMessages(sourceId, [withMenu(r.error ? `⚠️ ${r.error}` : `📚 ${r.property} 過去${r.days}日：予約${r.bookings}件・スレッド${r.threads}件から ${r.added} 組を学習例に追加（合計${r.total}件）\n「学習一覧 ${r.property}」で確認し、不要なものは「学習削除 ${r.property} 番号」で消してください。`)]);
       return;
     }
     if (cmd === "テスト") {
