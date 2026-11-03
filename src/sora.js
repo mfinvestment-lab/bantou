@@ -1,11 +1,11 @@
 // SORA（管理用）: 承認カードのボタン処理と、FAQ・ルール・学習例の登録コマンド
 import { sora, sourceIdOf } from "./line.js";
-import { rules, faq, examples, resolveProperty, listProperties, props } from "./store.js";
+import { rules, faq, examples, resolveProperty, listProperties, props, aliases } from "./store.js";
 import { getToken, fetchPropertyMap } from "./beds24.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -46,7 +46,7 @@ export async function handleSoraEvent(env, event) {
     // FAQ追加の入力待ち
     if (env.KV && userId) {
       const p = await faqMode.get(env.KV, userId);
-      if (p && !/^(FAQ|ルール|学習|新着|物件|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
+      if (p && !/^(FAQ|ルール|学習|新着|物件|別名|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
         const q = (text.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
         const a = (text.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
         if (!q || !a) { await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`); return; }
@@ -92,6 +92,26 @@ export async function handleSoraEvent(env, event) {
       const ruled = [];
       for (const n of names) ruled.push(`${(await rules.get(env.KV, n)) ? "✅" : "▫️"} ${n}`);
       await line.replyRaw(event.replyToken, [withMenu(`🏠 Beds24の物件（✅=返信ルール登録済み）\n${ruled.join("\n")}\n\nルール設定・テストはこの名前（省略形でも可）で指定してください。`)]);
+      return;
+    }
+    if (cmd === "別名登録") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const list = [...args.slice(1), ...restLines.join(" ").split(/\s+/)].filter(Boolean);
+      if (!p || !list.length) { await line.reply(event.replyToken, "形式：別名登録 物件名 別名1 別名2 …\n例：別名登録 nel.shizuoka nel. ネル ねる"); return; }
+      await aliases.add(env.KV, p, list);
+      await line.reply(event.replyToken, `✅ ${p} の別名に追加しました：${list.join("、")}\n（大文字小文字・空白・記号は無視して照合します）`);
+      return;
+    }
+    if (cmd === "別名一覧") {
+      const m = await aliases.get(env.KV);
+      const byP = {};
+      for (const [a, p] of Object.entries(m)) (byP[p] ||= []).push(a);
+      await line.reply(event.replyToken, Object.keys(byP).length ? "🔤 登録済みの別名\n" + Object.entries(byP).map(([p, as]) => `${p}：${as.join("、")}`).join("\n") : "別名はまだありません。「別名登録 物件名 別名…」で追加できます。");
+      return;
+    }
+    if (cmd === "別名削除") {
+      const r = await aliases.remove(env.KV, args[0]);
+      await line.reply(event.replyToken, r ? `🗑 「${args[0]}」を削除しました（${r}）` : "その別名はありません。");
       return;
     }
     if (cmd === "テスト") {

@@ -22,9 +22,26 @@ export function normalizeProperty(name) {
 // 表記ゆれ・省略名を Beds24 の物件名に寄せる（Beds24 の物件一覧を KV にキャッシュして照合）
 // 例: "simplestay" → "SimpleStay Shibuya Shinjuku"、"ねね" → "アパートメントねね"
 const squash = s => String(s).toLowerCase().replace(/[\s._\-・]/g, "");
+export const aliases = {
+  get: (kv) => j.get(kv, "alias:map", {}),
+  async add(kv, canonical, list) {
+    const m = await this.get(kv);
+    for (const a of list) if (a) m[squash(a)] = canonical;
+    await j.put(kv, "alias:map", m);
+    return m;
+  },
+  async remove(kv, alias) {
+    const m = await this.get(kv);
+    const had = m[squash(alias)];
+    delete m[squash(alias)];
+    await j.put(kv, "alias:map", m);
+    return had;
+  }
+};
 export async function resolveProperty(kv, name) {
   const s = normalizeProperty(name);
   if (!s) return null;
+  if (kv) { const al = await aliases.get(kv); if (al[squash(s)]) return al[squash(s)]; }
   if (["サクヤ", "桜ハウス", "nel.shizuoka"].includes(s)) return s;
   const map = kv ? await props.get(kv) : null;
   const names = map ? [...new Set(Object.values(map))] : [];

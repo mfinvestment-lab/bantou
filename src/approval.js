@@ -201,7 +201,7 @@ export async function handleAwaitingText(env, event) {
   if (!cardId) return false;
   const text = event.message.text.trim();
   // コマンドらしい文は返信として扱わない（入力待ちは解除）
-  if (/^(テスト|FAQ|ルール|学習|新着確認|物件一覧|ヘルプ|メニュー|設定|今日|売上|ID教えて|ping)/i.test(text)) {
+  if (/^(テスト|FAQ|ルール|学習|新着確認|物件一覧|別名|ヘルプ|メニュー|設定|今日|売上|ID教えて|ping)/i.test(text)) {
     await cards.awaiting.clear(env.KV, userId);
     return false;
   }
