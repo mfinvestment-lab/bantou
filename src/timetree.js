@@ -41,7 +41,7 @@ async function fillFirst(page, selectors, value) {
 
 async function login(env, page, log) {
   if (!env.TIMETREE_EMAIL || !env.TIMETREE_PASSWORD) throw new Error("TIMETREE_EMAIL / TIMETREE_PASSWORD が未設定です");
-  await page.goto(SIGNIN_URL, { waitUntil: "networkidle2", timeout: 45000 });
+  if (!(await page.$('input[type="password"]'))) await page.goto(SIGNIN_URL, { waitUntil: "networkidle2", timeout: 45000 });
   log.push({ step: "signin page", url: page.url() });
   await fillFirst(page, ['input[type="email"]', 'input[name="email"]', 'input[autocomplete="username"]', 'input[type="text"]'], env.TIMETREE_EMAIL);
   await fillFirst(page, ['input[type="password"]', 'input[name="password"]'], env.TIMETREE_PASSWORD);
@@ -71,7 +71,7 @@ export async function timetreeCheck(env, { fresh = false } = {}) {
         const type = req.resourceType();
         const url = res.url();
         if (!["xhr", "fetch"].includes(type)) return;
-        if (!/timetree/i.test(url)) return;
+        if (!/timetree/i.test(url) || /google|_rsc=/.test(url)) return;
         const ct = res.headers()["content-type"] || "";
         let sample = null;
         if (/json/.test(ct)) sample = (await res.text()).slice(0, 400);
@@ -79,17 +79,20 @@ export async function timetreeCheck(env, { fresh = false } = {}) {
       } catch {}
     });
 
-    let restored = !fresh && (await restoreCookies(env, page));
-    await page.goto("https://timetreeapp.com/", { waitUntil: "networkidle2", timeout: 45000 });
-    log.push({ step: "home", url: page.url(), restoredCookies: restored });
-    if (/signin|login|^https:\/\/timetreeapp\.com\/?$/.test(page.url()) && !(await page.$('[class*="calendar" i], [data-testid*="calendar" i]'))) {
+    const restored = !fresh && (await restoreCookies(env, page));
+    // ログイン済みなら /signin はカレンダー画面へリダイレクトされる想定
+    await page.goto(SIGNIN_URL, { waitUntil: "networkidle2", timeout: 45000 });
+    log.push({ step: "open signin", url: page.url(), restoredCookies: restored });
+    const hasPasswordField = !!(await page.$('input[type="password"]'));
+    if (hasPasswordField) {
       await login(env, page, log);
-      await page.goto("https://timetreeapp.com/", { waitUntil: "networkidle2", timeout: 45000 });
-      log.push({ step: "home after login", url: page.url() });
+    } else {
+      log.push({ step: "already logged in (no password field)" });
     }
     await new Promise(r => setTimeout(r, 3000));
-    const text = (await page.evaluate(() => document.body.innerText)).slice(0, 3000);
+    const text = (await page.evaluate(() => document.body.innerText)).slice(0, 2000);
+    const inputs = await page.evaluate(() => Array.from(document.querySelectorAll("input,button")).map(e => `${e.tagName.toLowerCase()}[type=${e.type}][name=${e.name}][text=${(e.innerText || e.placeholder || "").slice(0, 30)}]`).slice(0, 30));
     const links = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]")).map(a => a.getAttribute("href")).filter(h => /calendar/i.test(h)).slice(0, 30));
-    return { ok: true, log, url: page.url(), calendarLinks: links, apiCalls: apiCalls.slice(0, 60), pageText: text };
+    return { ok: true, log, url: page.url(), inputs, calendarLinks: links, apiCalls: apiCalls.slice(0, 60), pageText: text };
   }).catch(e => ({ ok: false, error: e.message, log, apiCalls: apiCalls.slice(0, 60) }));
 }
