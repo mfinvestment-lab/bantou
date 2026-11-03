@@ -52,6 +52,10 @@ export default {
           const r = await fetch("https://beds24.com/api/v2/authentication/details", { headers: { accept: "application/json", token } });
           return json({ status: r.status, details: await r.json() });
         }
+        if (path === "/admin/timetree-check") {
+          const { timetreeCheck } = await import("./timetree.js");
+          return json(await timetreeCheck(env, { fresh: url.searchParams.get("fresh") === "1" }));
+        }
         if (path === "/admin/messages-mark-test") {
           const { getToken } = await import("./beds24.js");
           const token = await getToken(env);

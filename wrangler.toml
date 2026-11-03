@@ -11,6 +11,10 @@ crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *"]  # 5分ごと = ゲストメ�
 binding = "KV"
 id = "d9ecde121a0b4b88be97f0d7afea0541"
 
+# TimeTree同期用（Browser Rendering。Workers有料プランが必要）
+[browser]
+binding = "BROWSER"
+
 [observability]
 enabled = true
 
