@@ -37,10 +37,10 @@ export function cleaningButtonsMessage(date, facilities, { test = false } = {}) 
   return { type: "flex", altText: "清掃の開始・終了ボタン", contents: bubbles.length === 1 ? bubbles[0] : { type: "carousel", contents: bubbles } };
 }
 
-function allowedGroup(env, facility, groupId) {
+async function allowedGroup(env, facility, groupId, userId) {
   const f = FACILITY[facility];
   if (!f) return false;
-  if (!groupId) return true; // 個人チャット（管理者のテスト）は許可
+  if (!groupId) { const { staffAllowed } = await import("./harucmd.js"); return staffAllowed(env, userId, facility); } // 個人チャットは担当エリアで判定
   return f.groups.some(k => env[k] === groupId);
 }
 
@@ -55,7 +55,7 @@ export async function handleCleaningPostback(env, event) {
   const date = (params.get("d") || formatDateYMD(new Date())) + (test ? ":test" : "");
   const groupId = event.source.groupId || null;
   const userId = event.source.userId;
-  if (!allowedGroup(env, facility, groupId)) { await line.reply(event.replyToken, `${facility} のボタンはこのグループでは使えません。`); return true; }
+  if (!(await allowedGroup(env, facility, groupId, userId))) { await line.reply(event.replyToken, groupId ? `${facility} のボタンはこのグループでは使えません。` : `${facility} はあなたの担当エリアではありません。担当を変えるには「登録」と送ってください。`); return true; }
   const now = new Date(); // 実時刻。表示は hhmm/formatDateYMD が日本時間に直す
   const who = (await line.memberName(groupId, userId)) || "スタッフ";
   const cur = (await rec.get(env.KV, date, facility)) || { facility, date };

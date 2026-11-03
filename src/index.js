@@ -5,6 +5,7 @@ import { handleInventoryMessage, runDeliveryCheck } from "./inventory.js";
 import { handleSoraEvent } from "./sora.js";
 import { pollGuestMessages } from "./approval.js";
 import { handleCleaningPostback, cleaningButtonsMessage, todayCleaningStatus } from "./cleanlog.js";
+import { handleHaruDirect } from "./harucmd.js";
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj, null, 2), { status, headers: { "Content-Type": "application/json; charset=utf-8" } });
@@ -32,6 +33,7 @@ export default {
           await haru(env).reply(event.replyToken, `${sourceType}ID：\n${sourceIdOf(event)}`);
           return;
         }
+        if (env.KV && (await handleHaruDirect(env, event))) return;
         await handleInventoryMessage(env, text, event.replyToken, event.source.userId);
       });
     }
