@@ -81,6 +81,14 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (text === "ping") { await line.reply(event.replyToken, "pong（SORA稼働中）"); return; }
+    if (text === "設定") {
+      await line.replyRaw(event.replyToken, [{ type: "text", text: "何をしますか？", quickReply: { items: [qr("FAQ追加", "FAQ追加"), qr("ルール表示", "ルール表示"), qr("学習一覧", "学習一覧"), qr("FAQ一覧", "FAQ一覧")] } }]);
+      return;
+    }
+    if (text === "今日" || text === "売上") {
+      await line.reply(event.replyToken, `「${text}」のダッシュボードは準備中です（機能5で作成）。`);
+      return;
+    }
     if (text === "ヘルプ" || text === "help" || text === "メニュー") { await line.replyRaw(event.replyToken, [MENU]); return; }
     if (!env.KV) { if (/^(FAQ|ルール|学習|新着)/.test(cmd)) await line.reply(event.replyToken, "KVが未設定のため、登録機能はまだ使えません。"); return; }
 
