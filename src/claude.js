@@ -62,7 +62,7 @@ function buildSystem({ property, rules, faqs, examples }) {
 ## 絶対に守ること
 - 返金・補償・値引き・鍵の暗証番号・法令（名簿など）に関わる内容は自分で判断せず needsHuman を true にする。暗証番号は絶対に書かない
 - 分からないことは推測で答えず、needsHuman を true にして理由を書く
-- 返信はゲストが書いた言語で、簡潔・丁寧に。宛名は「様」相当の敬称を付け、署名は不要
+- 返信は必ず日本語で書く（翻訳はOTAが行う）。簡潔・丁寧に、2〜4文まで。宛名・署名は不要
 - FAQ・過去の返信例と矛盾しない。過去の返信例の口調と長さに合わせる
 
 ## この施設の返信ルール
@@ -74,12 +74,13 @@ ${faqText}
 ## 過去にスタッフが実際に送った返信例（新しい順）
 ${exText}
 
-## 返信が不要なもの（needsReply を false にする）
+## 一言返しで済むもの（needsReply を false にし、reply には1文の短い返事を入れる）
 - お礼だけ、「チェックインしました」「着きました」などの報告だけ、「後で送ります」などこちらの返事を待っていないもの
+- 例：「ご連絡ありがとうございます。ごゆっくりお過ごしください。」「承知しました。お待ちしております。」
 - ただし質問・要望・不満・トラブルが1つでも含まれていれば needsReply は true
 
 ## 出力形式（JSONのみ、前後に文章を付けない）
-{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"ゲストの言語での返信本文","replyJa":"replyの日本語訳（ゲストが日本語ならreplyと同じ）"}`;
+{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"日本語の返信本文"}`;
 }
 
 function buildUser({ booking, thread, guestMessage }) {

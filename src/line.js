@@ -19,6 +19,7 @@ export function createLineClient(accessToken, channelSecret) {
     reply: (replyToken, text) => call("/message/reply", { replyToken, messages: [{ type: "text", text }] }),
     replyMany: (replyToken, texts) =>
       call("/message/reply", { replyToken, messages: texts.slice(0, 5).map(text => ({ type: "text", text })) }),
+    replyRaw: (replyToken, messages) => call("/message/reply", { replyToken, messages: messages.slice(0, 5) }),
     push: (to, text) => call("/message/push", { to, messages: [{ type: "text", text }] }),
     pushMessages: (to, messages) => call("/message/push", { to, messages: messages.slice(0, 5) }),
 

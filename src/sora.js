@@ -3,16 +3,19 @@ import { sora, sourceIdOf } from "./line.js";
 import { rules, faq, examples, normalizeProperty } from "./store.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages } from "./approval.js";
 
-const HELP = `SORAのコマンド
-・FAQ追加 物件名（改行）Q: 質問（改行）A: 答え
-・FAQ一覧 物件名
-・FAQ削除 物件名 番号
-・ルール設定 物件名（改行）ルール本文
-・ルール表示 物件名
-・学習一覧 物件名
-・学習削除 物件名 番号
-・新着確認 … Beds24の未読を今すぐ取りに行く
-・ID教えて / ping`;
+const PROPERTIES = ["サクヤ", "桜ハウス", "nel.shizuoka"];
+const qr = (label, text) => ({ type: "action", action: { type: "message", label, text } });
+const MENU = {
+  type: "text",
+  text: "ボタンを押すか、コマンドを送ってください。\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号",
+  quickReply: { items: [
+    qr("新着確認", "新着確認"),
+    ...PROPERTIES.map(p => qr(`FAQ ${p}`, `FAQ一覧 ${p}`)),
+    ...PROPERTIES.map(p => qr(`学習 ${p}`, `学習一覧 ${p}`)),
+    ...PROPERTIES.map(p => qr(`ルール ${p}`, `ルール表示 ${p}`))
+  ].slice(0, 13) }
+};
+const withMenu = text => ({ type: "text", text, quickReply: MENU.quickReply });
 
 export async function handleSoraEvent(env, event) {
   const line = sora(env);
@@ -41,12 +44,15 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (text === "ping") { await line.reply(event.replyToken, "pong（SORA稼働中）"); return; }
-    if (text === "ヘルプ" || text === "help") { await line.reply(event.replyToken, HELP); return; }
+    if (text === "ヘルプ" || text === "help" || text === "メニュー") { await line.replyRaw(event.replyToken, [MENU]); return; }
     if (!env.KV) { if (/^(FAQ|ルール|学習|新着)/.test(cmd)) await line.reply(event.replyToken, "KVが未設定のため、登録機能はまだ使えません。"); return; }
 
     if (cmd === "新着確認") {
       const r = await pollGuestMessages(env);
-      await line.reply(event.replyToken, `未読 ${r.checked ?? 0} 件を確認しました。\n${JSON.stringify(r.results || r.error || [], null, 0).slice(0, 800)}`);
+      const rs = r.results || [];
+      const n = { card: rs.filter(x => x.cardId).length, auto: rs.filter(x => x.auto).length, skip: rs.filter(x => x.skipped).length, err: rs.filter(x => x.error).length };
+      const lines = rs.map(x => x.cardId ? `📩 カード: ${x.category}` : x.auto ? `💬 ${x.auto}` : x.skipped ? `✔ ${x.skipped}` : `⚠️ ${x.error}`).slice(0, 10).join("\n");
+      await line.replyRaw(event.replyToken, [withMenu(`未読 ${r.checked ?? 0} 件（カード${n.card}・一言返し${n.auto}・不要${n.skip}${n.err ? `・エラー${n.err}` : ""}）${lines ? "\n" + lines : ""}`)]);
       return;
     }
 

@@ -54,10 +54,16 @@ async function handleGuestMessage(env, token, m) {
     return { id: m.id, skipped: "返信不要" };
   }
 
-  const thread = (await fetchThread(token, m.bookingId))
+  const rawThread = (await fetchThread(token, m.bookingId))
     .filter(t => t.id !== m.id)
-    .sort((a, b) => String(a.time).localeCompare(String(b.time)))
-    .map(t => ({ from: t.source === "guest" ? "guest" : "host", text: t.message }));
+    .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+  // OTA側で既に返信済み（このメッセージより後にホストの発言がある）なら何もしない
+  if (rawThread.some(t => t.source === "host" && String(t.time) > String(m.time))) {
+    await markMessageRead(token, m.id);
+    return { id: m.id, skipped: "OTAで返信済み" };
+  }
+  const thread = rawThread.map(t => ({ from: t.source === "guest" ? "guest" : "host", text: t.message }));
 
   const ctx = {
     property,
@@ -70,10 +76,16 @@ async function handleGuestMessage(env, token, m) {
   };
   const draft = await draftReply(env, ctx);
 
-  // 返信不要（お礼・到着報告など）はカードを出さず既読にする
+  // 一言返しで済むもの（お礼・到着報告など）は短い返事を自動送信。同じ予約には48時間に1回まで（ラリー防止）
   if (draft.needsReply === false && !draft.needsHuman) {
+    const ackKey = `ack:${m.bookingId}`;
+    const already = await env.KV.get(ackKey);
+    if (!already && draft.reply) {
+      await sendGuestMessage(token, m.bookingId, draft.reply);
+      await env.KV.put(ackKey, new Date().toISOString(), { expirationTtl: 60 * 60 * 48 });
+    }
     await markMessageRead(token, m.id);
-    return { id: m.id, skipped: `返信不要(${draft.category})`, model: draft.model };
+    return { id: m.id, auto: already ? "一言返し済みのため無送信" : `一言返し: ${draft.reply}`, category: draft.category, model: draft.model };
   }
 
   const cardId = `${m.bookingId}-${m.id}`;
@@ -98,23 +110,16 @@ export function buildCardMessage(card) {
     type: "button", style, height: "sm",
     action: { type: "postback", label, data: `card=${card.id}&action=${action}`, displayText: `${label}（${card.property} ${card.guest}様）` }
   });
+  const row = (...btns) => ({ type: "box", layout: "horizontal", spacing: "sm", contents: btns });
   const buttons = d.needsHuman
-    ? [postback("自分で書く", "write", "primary"), postback("対応しない", "dismiss", "secondary")]
-    : [postback("このまま送信", "approve", "primary"), postback("修正して送信", "edit", "secondary"), postback("自分で書く", "write", "secondary")];
+    ? [row(postback("自分で書く", "write", "primary"), postback("対応済み", "done", "secondary"))]
+    : [row(postback("送信", "approve", "primary"), postback("修正", "edit", "secondary")), row(postback("自分で書く", "write", "secondary"), postback("対応済み", "done", "secondary"))];
 
-  const sameLang = d.reply && d.replyJa && d.reply.trim() === d.replyJa.trim();
   const body = [
-    txt(title, { weight: "bold", size: "md", color: d.needsHuman ? "#c0392b" : "#111111" }),
-    txt(`${card.property}｜${card.guest}様（${card.channel}）`, { weight: "bold" }),
-    txt(`${card.stay}`, { size: "xs", color: "#888888" }),
+    txt(`${d.needsHuman ? "⚠️ " : ""}${card.property}｜${card.guest}様`, { weight: "bold", size: "md", color: d.needsHuman ? "#c0392b" : "#111111" }),
+    txt(card.guestMessage, { color: "#555555" }),
     sep,
-    txt("ゲストの原文", { size: "xs", color: "#888888", margin: "md" }),
-    txt(card.guestMessage),
-    sep,
-    txt(d.needsHuman ? "AIの判断" : "返信案", { size: "xs", color: "#888888", margin: "md" }),
-    txt(d.needsHuman ? d.reason : d.reply),
-    ...(!d.needsHuman && !sameLang ? [txt(`（日本語訳）${d.replyJa}`, { size: "xs", color: "#555555" })] : []),
-    ...(!d.needsHuman ? [txt(`根拠：${d.reason}`, { size: "xs", color: "#888888" })] : [])
+    txt(d.needsHuman ? `要確認：${d.reason}` : d.reply, { margin: "md" })
   ];
   return {
     type: "flex",
@@ -146,17 +151,17 @@ export async function handlePostback(env, event) {
   if (action === "edit" || action === "write") {
     await cards.awaiting.set(env.KV, userId, cardId);
     const hint = action === "edit"
-      ? `返信案を修正して、そのまま送ってください。\n\n${card.draft.reply}\n\n（「キャンセル」で中止）`
-      : `${card.guest}様への返信を入力してください。ゲストの言語（${card.channel}）で書くか、日本語で書けばAIが翻訳します。\n（「キャンセル」で中止）`;
+      ? `修正した文面を送ってください（日本語でOK）。\n\n${card.draft.reply}\n\n「キャンセル」で中止`
+      : `${card.guest}様への返信を日本語で入力してください。\n「キャンセル」で中止`;
     await line.reply(event.replyToken, hint);
     return;
   }
-  if (action === "dismiss") {
-    card.status = "dismissed";
+  if (action === "dismiss" || action === "done") {
+    card.status = "done";
     await cards.put(env.KV, cardId, card);
     const token = await getToken(env);
     await markMessageRead(token, card.messageId);
-    await line.reply(event.replyToken, "対応しないとして閉じました。");
+    await line.reply(event.replyToken, `対応済みにしました（${card.property} ${card.guest}様）`);
     return;
   }
 }
@@ -181,7 +186,7 @@ export async function handleAwaitingText(env, event) {
   }
   await cards.awaiting.clear(env.KV, userId);
   await sendAndRecord(env, card, text, { by: userId, how: "manual" });
-  await line.reply(event.replyToken, `✅ 送信し、学習例として保存しました（${card.property} ${card.guest}様）`);
+  await line.reply(event.replyToken, `✅ 送信しました（${card.property} ${card.guest}様）`);
   return true;
 }
 
