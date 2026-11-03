@@ -27,16 +27,23 @@ const HELP = `HARU（清掃用）の使い方
 ・今日の予定：担当エリアの本日の清掃（人数・泊数）
 ・足りない物／棚卸：準備中
 ・在庫の発言（「サクヤ バスタオル 残り10」など）は今までどおり使えます
-・担当エリアを変えるときは「登録」`;
+・グループでは「開始」「終了」「今日」と送るだけでもボタンが出ます`;
 
 /** 1対1の HARU テキストコマンド。処理したら true */
+const GROUP_LOC = env => ({ [env.LINE_GROUP_FUJINOMIYA_WEEKDAY]: "富士宮", [env.LINE_GROUP_FUJINOMIYA_HOLIDAY]: "富士宮", [env.LINE_GROUP_SHIZUOKA]: "静岡" });
+const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定" };
+
 export async function handleHaruDirect(env, event) {
-  if (event.source.groupId || event.source.roomId) return false; // グループは従来どおり（在庫BOT）
   const line = haru(env);
-  const text = event.message.text.trim();
+  const text = ALIAS[event.message.text.trim()] || event.message.text.trim();
   const userId = event.source.userId;
-  const me = await staff.get(env.KV, userId);
-  const isOwner = userId === env.OWNER_USER_ID;
+  const groupId = event.source.groupId || null;
+  const groupLoc = groupId ? GROUP_LOC(env)[groupId] : null;
+  if (groupId && !groupLoc) return false;               // 清掃グループ以外のグループは対象外
+  if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ"].includes(text)) return false; // グループでは在庫BOTを優先
+  // グループなら担当エリア＝そのグループ。個人チャットなら登録済みエリア
+  const me = groupLoc ? { loc: groupLoc } : await staff.get(env.KV, userId);
+  const isOwner = !groupId && userId === env.OWNER_USER_ID;
 
   if (text === "登録" || text === "担当登録") {
     await line.replyRaw(event.replyToken, [{ type: "text", text: "担当エリアを選んでください", quickReply: { items: LOCATIONS.map(l => qr(l, `登録 ${l}`)) } }]);
