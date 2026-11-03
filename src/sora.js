@@ -1,24 +1,17 @@
 // SORA（管理用）: 承認カードのボタン処理と、FAQ・ルール・学習例の登録コマンド
 import { sora, sourceIdOf } from "./line.js";
-import { rules, faq, examples, normalizeProperty } from "./store.js";
+import { rules, faq, examples, resolveProperty, listProperties, props } from "./store.js";
+import { getToken, fetchPropertyMap } from "./beds24.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
-const PROPERTIES = ["サクヤ", "桜ハウス", "nel.shizuoka"];
-const qr = (label, text) => ({ type: "action", action: { type: "message", label, text } });
-const MENU = {
-  type: "text",
-  text: "ボタンを押すか、コマンドを送ってください。\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号",
-  quickReply: { items: [
-    qr("新着確認", "新着確認"),
-    ...PROPERTIES.map(p => qr(`FAQ ${p}`, `FAQ一覧 ${p}`)),
-    ...PROPERTIES.map(p => qr(`学習 ${p}`, `学習一覧 ${p}`)),
-    ...PROPERTIES.map(p => qr(`ルール ${p}`, `ルール表示 ${p}`))
-  ].slice(0, 13) }
-};
-const withMenu = text => ({ type: "text", text, quickReply: MENU.quickReply });
-const pickProperty = (cmd, label) => ({
+const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
+const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
+const withMenu = text => ({ type: "text", text, quickReply: menuQR });
+const pickProperty = (cmd, label, list) => ({
   type: "text", text: `${label}する物件を選んでください`,
-  quickReply: { items: PROPERTIES.map(p => qr(p, `${cmd} ${p}`)) }
+  quickReply: { items: list.slice(0, 13).map(p => qr(p, `${cmd} ${p}`)) }
 });
 // FAQ追加の対話状態（userId → 物件名）
 const faqMode = {
@@ -53,7 +46,7 @@ export async function handleSoraEvent(env, event) {
     // FAQ追加の入力待ち
     if (env.KV && userId) {
       const p = await faqMode.get(env.KV, userId);
-      if (p && !/^(FAQ|ルール|学習|新着|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
+      if (p && !/^(FAQ|ルール|学習|新着|物件|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
         const q = (text.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
         const a = (text.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
         if (!q || !a) { await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`); return; }
@@ -67,11 +60,11 @@ export async function handleSoraEvent(env, event) {
 
     // 物件名なしのコマンドは物件選択ボタンを出す
     if (["FAQ一覧", "FAQ追加", "ルール表示", "学習一覧"].includes(cmd) && args.length === 0 && restLines.length === 0) {
-      await line.replyRaw(event.replyToken, [pickProperty(cmd, cmd)]);
+      await line.replyRaw(event.replyToken, [pickProperty(cmd, cmd, await listProperties(env.KV))]);
       return;
     }
     if (cmd === "FAQ追加" && args[0] && restLines.length === 0) {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       await faqMode.set(env.KV, userId, p);
       await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`);
       return;
@@ -92,8 +85,17 @@ export async function handleSoraEvent(env, event) {
     if (text === "ヘルプ" || text === "help" || text === "メニュー") { await line.replyRaw(event.replyToken, [MENU]); return; }
     if (!env.KV) { if (/^(FAQ|ルール|学習|新着)/.test(cmd)) await line.reply(event.replyToken, "KVが未設定のため、登録機能はまだ使えません。"); return; }
 
+    if (cmd === "物件一覧") {
+      const map = await fetchPropertyMap(await getToken(env));
+      await props.set(env.KV, map);
+      const names = await listProperties(env.KV);
+      const ruled = [];
+      for (const n of names) ruled.push(`${(await rules.get(env.KV, n)) ? "✅" : "▫️"} ${n}`);
+      await line.replyRaw(event.replyToken, [withMenu(`🏠 Beds24の物件（✅=返信ルール登録済み）\n${ruled.join("\n")}\n\nルール設定・テストはこの名前（省略形でも可）で指定してください。`)]);
+      return;
+    }
     if (cmd === "テスト") {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       const q = [args.slice(1).join(" "), ...restLines].join("\n").trim();
       if (!p || !q) { await line.reply(event.replyToken, "形式：テスト 物件名 ゲストの質問文"); return; }
       await line.reply(event.replyToken, "返信案を作っています…");
@@ -113,7 +115,7 @@ export async function handleSoraEvent(env, event) {
     }
 
     if (cmd === "FAQ追加") {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       const body = restLines.join("\n");
       const q = (body.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
       const a = (body.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
@@ -123,39 +125,39 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (cmd === "FAQ一覧") {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       const list = await faq.list(env.KV, p);
       await line.reply(event.replyToken, list.length ? `📋 ${p} のFAQ（${list.length}件）\n` + list.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}`).join("\n").slice(0, 4500) : `${p} のFAQはまだありません。`);
       return;
     }
     if (cmd === "FAQ削除") {
-      const p = normalizeProperty(args[0]); const n = parseInt(args[1]);
+      const p = await resolveProperty(env.KV, args[0]); const n = parseInt(args[1]);
       if (!p || !n) { await line.reply(event.replyToken, "形式：FAQ削除 物件名 番号"); return; }
       const r = await faq.remove(env.KV, p, n);
       await line.reply(event.replyToken, r ? `🗑 削除しました\nQ: ${r.q}` : "その番号はありません。");
       return;
     }
     if (cmd === "ルール設定") {
-      const p = normalizeProperty(args[0]); const body = restLines.join("\n").trim();
+      const p = await resolveProperty(env.KV, args[0]); const body = restLines.join("\n").trim();
       if (!p || !body) { await line.reply(event.replyToken, "形式：\nルール設定 物件名\nルール本文（複数行可）"); return; }
       await rules.set(env.KV, p, body);
       await line.reply(event.replyToken, `✅ ${p} の返信ルールを更新しました（${body.length}文字）`);
       return;
     }
     if (cmd === "ルール表示") {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       const r = await rules.get(env.KV, p);
       await line.reply(event.replyToken, r ? `📄 ${p} の返信ルール\n${r}`.slice(0, 4500) : `${p} のルールは未設定です。`);
       return;
     }
     if (cmd === "学習一覧") {
-      const p = normalizeProperty(args[0]);
+      const p = await resolveProperty(env.KV, args[0]);
       const list = await examples.list(env.KV, p);
       await line.reply(event.replyToken, list.length ? `🧠 ${p} の学習例（${list.length}件・新しい順）\n` + list.slice(0, 15).map((e, i) => `${i + 1}. ${e.q.slice(0, 40)}\n   → ${e.a.slice(0, 60)}`).join("\n").slice(0, 4500) : `${p} の学習例はまだありません。`);
       return;
     }
     if (cmd === "学習削除") {
-      const p = normalizeProperty(args[0]); const n = parseInt(args[1]);
+      const p = await resolveProperty(env.KV, args[0]); const n = parseInt(args[1]);
       if (!p || !n) { await line.reply(event.replyToken, "形式：学習削除 物件名 番号"); return; }
       const r = await examples.remove(env.KV, p, n);
       await line.reply(event.replyToken, r ? `🗑 削除しました\n${r.q.slice(0, 60)}` : "その番号はありません。");
