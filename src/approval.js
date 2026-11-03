@@ -170,6 +170,7 @@ export async function handlePostback(env, event) {
   if (card.status !== "pending") { await line.reply(event.replyToken, `このメッセージは対応済みです（${card.status}）。`); return; }
 
   if (action === "approve") {
+    await cards.awaiting.clear(env.KV, userId);
     await sendAndRecord(env, card, card.draft.reply, { by: userId, how: "approve" });
     await line.reply(event.replyToken, card.test ? `✅（テスト）送信扱いにしました` : `✅ 送信しました（${card.property} ${card.guest}様）`);
     return;
@@ -183,6 +184,7 @@ export async function handlePostback(env, event) {
     return;
   }
   if (action === "dismiss" || action === "done") {
+    await cards.awaiting.clear(env.KV, userId);
     card.status = "done";
     await cards.put(env.KV, cardId, card);
     if (!card.test) { const token = await getToken(env); await markMessageRead(token, card.messageId); }
@@ -198,6 +200,11 @@ export async function handleAwaitingText(env, event) {
   const cardId = await cards.awaiting.get(env.KV, userId);
   if (!cardId) return false;
   const text = event.message.text.trim();
+  // コマンドらしい文は返信として扱わない（入力待ちは解除）
+  if (/^(テスト|FAQ|ルール|学習|新着確認|ヘルプ|メニュー|設定|今日|売上|ID教えて|ping)/i.test(text)) {
+    await cards.awaiting.clear(env.KV, userId);
+    return false;
+  }
   if (text === "キャンセル") {
     await cards.awaiting.clear(env.KV, userId);
     await line.reply(event.replyToken, "中止しました。カードのボタンからやり直せます。");
