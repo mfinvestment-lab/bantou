@@ -4,7 +4,7 @@ compatibility_date = "2026-10-01"
 
 # 定期実行（UTC）: 23:00 = 日本時間 8:00 清掃通知 / 00:00 = 日本時間 9:00 納品反映
 [triggers]
-crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *"]  # 5分ごと = ゲストメッセージ確認
+crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *", "0 22 * * *", "0 9 * * *"]  # 5分ごと = ゲストメッセージ確認 / 22:00・09:00 UTC = 日本時間 7:00・18:00 TimeTree同期
 
 # 承認カード・FAQ・学習例の保存先（ダッシュボードで作った KV namespace の ID を入れる）
 [[kv_namespaces]]
@@ -30,6 +30,9 @@ LINE_GROUP_SHIZUOKA = "C7656ee7a6c9e66e39154ccf05a9e76a3"
 OWNER_USER_ID = "Ubd034e0134bddb7d012c4ecf94c91bd4"
 # 一言返し（お礼・到着報告への短い返事）を自動送信するか。"on" 以外はカードで確認
 AUTO_ACK = "off"
+# TimeTree同期: off | dry（計算のみ）| add（追加のみ）| full（削除・変更も）。対象物件は TIMETREE_PROPS（カンマ区切り）
+TIMETREE_SYNC = "off"
+TIMETREE_PROPS = "nel.shizuoka"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）

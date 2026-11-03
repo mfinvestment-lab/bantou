@@ -56,6 +56,11 @@ export default {
           const { timetreeCheck } = await import("./timetree.js");
           return json(await timetreeCheck(env, { fresh: url.searchParams.get("fresh") === "1" }));
         }
+        if (path === "/admin/timetree-sync") {
+          const { syncTimeTree } = await import("./ttsync.js");
+          const props = url.searchParams.get("props")?.split(",").map(s => s.trim()).filter(Boolean);
+          return json(await syncTimeTree(env, { props, mode: url.searchParams.get("mode") || "add", apply: url.searchParams.get("apply") === "1" }));
+        }
         if (path === "/admin/timetree-test-event") {
           const { timetreeTestEvent } = await import("./timetree.js");
           return json(await timetreeTestEvent(env, { keep: url.searchParams.get("keep") === "1" }));
@@ -114,6 +119,9 @@ export default {
       );
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(runDeliveryCheck(env));
+    } else if (event.cron === "0 22 * * *" || event.cron === "0 9 * * *") {
+      const { runTimeTreeSync } = await import("./ttsync.js");
+      ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(
         pollGuestMessages(env)

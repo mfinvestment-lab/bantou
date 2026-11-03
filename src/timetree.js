@@ -103,9 +103,22 @@ export async function timetreeCheck(env, { fresh = false } = {}) {
 }
 
 // ---- 段階2: ブラウザを使わず、保存した Cookie で内部APIを直接呼ぶ ----
-export async function ttApi(env, path, { method = "GET", body } = {}) {
-  const cookies = (await env.KV.get(COOKIE_KEY, "json")) || [];
-  if (!cookies.length) throw new Error("TimeTreeのCookieがありません。/admin/timetree-check を先に実行してください");
+export async function ttApi(env, path, opt = {}, retry = true) {
+  let cookies = (await env.KV.get(COOKIE_KEY, "json")) || [];
+  if (!cookies.length) {
+    // Cookie が無ければブラウザでログインして取り直す
+    const r = await timetreeCheck(env, { fresh: true });
+    if (!r.ok) throw new Error("TimeTreeログイン失敗: " + r.error);
+    cookies = (await env.KV.get(COOKIE_KEY, "json")) || [];
+  }
+  const res0 = await ttFetch(env, path, opt, cookies);
+  if ((res0.status === 401 || res0.status === 403) && retry) {
+    await env.KV.delete(COOKIE_KEY);
+    return ttApi(env, path, opt, false);
+  }
+  return res0;
+}
+async function ttFetch(env, path, { method = "GET", body } = {}, cookies) {
   const headers = (await env.KV.get("timetree:headers", "json")) || {};
   const res = await fetch(`https://timetreeapp.com${path}`, {
     method,
