@@ -1,6 +1,7 @@
 // 清掃通知（毎朝 日本時間8:00）: Beds24 → HARU の清掃グループへ
 import { BEDS24_PROPERTIES, getToken, fetchFacilityBookings, nowJST, formatDateYMD, addDays, nightsBetween } from "./beds24.js";
 import { haru } from "./line.js";
+import { cleaningButtonsMessage } from "./cleanlog.js";
 
 async function isWeekendOrHoliday(dateStr) {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -67,7 +68,8 @@ export async function runCleaningNotification(env) {
       const c = info[f].cleaning;
       msg += c ? `${f}　${c.count}名${c.nights}泊\n` : `${f}　なし\n`;
     }
-    await line.push(groupId, msg.trim());
+    const cards = fujinomiya.filter(f => info[f].cleaning).map(f => ({ name: f, text: `${info[f].cleaning.count}名${info[f].cleaning.nights}泊` }));
+    await line.pushMessages(groupId, [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards)]);
     fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim() };
   }
 
@@ -75,7 +77,7 @@ export async function runCleaningNotification(env) {
   const nel = info["nel.shizuoka"].cleaning;
   if (nel) {
     const msg = `おはようございます。\n本日もよろしくお願いします。\nnel.shizuoka　${nel.count}名${nel.nights}泊`;
-    await line.push(env.LINE_GROUP_SHIZUOKA, msg);
+    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [{ name: "nel.shizuoka", text: `${nel.count}名${nel.nights}泊` }])]);
     shizuokaResult = { sentTo: "静岡チーム", message: msg };
   }
 

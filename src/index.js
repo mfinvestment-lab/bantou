@@ -4,6 +4,7 @@ import { runCleaningNotification, collectFacilityInfo } from "./cleaning.js";
 import { handleInventoryMessage, runDeliveryCheck } from "./inventory.js";
 import { handleSoraEvent } from "./sora.js";
 import { pollGuestMessages } from "./approval.js";
+import { handleCleaningPostback, cleaningButtonsMessage, todayCleaningStatus } from "./cleanlog.js";
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj, null, 2), { status, headers: { "Content-Type": "application/json; charset=utf-8" } });
@@ -23,6 +24,7 @@ export default {
     if (request.method === "POST" && (path === "/haru/webhook" || path === "/")) {
       // "/" は旧番頭との互換（LINE側のWebhook URLを切り替えるまでの間）
       return handleWebhook(request, ctx, haru(env), async event => {
+        if (event.type === "postback") { await handleCleaningPostback(env, event); return; }
         if (event.type !== "message" || event.message.type !== "text") return;
         const text = event.message.text.trim();
         if (text === "グループID教えて") {
@@ -44,6 +46,14 @@ export default {
       try {
         if (path === "/admin/cleaning-preview") return json(await collectFacilityInfo(env));
         if (path === "/admin/cleaning-run") return json(await runCleaningNotification(env));
+        if (path === "/admin/cleaning-buttons-test") {
+          // 管理者の個人チャット（HARU）にテスト用ボタンを送る。物件は ?f=サクヤ
+          const f = url.searchParams.get("f") || "nel.shizuoka";
+          const { formatDateYMD } = await import("./beds24.js");
+          await haru(env).pushMessages(url.searchParams.get("to") || env.OWNER_USER_ID, [cleaningButtonsMessage(formatDateYMD(new Date()), [{ name: f, text: "テスト" }])]);
+          return json({ ok: true, facility: f });
+        }
+        if (path === "/admin/cleaning-status") return json(await todayCleaningStatus(env, url.searchParams.get("d") || undefined));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {

@@ -1,6 +1,6 @@
 // Beds24 の予約 → TimeTree 清掃カレンダーの差分同期（機能1）
 // 番頭が作った予定は note に "#B<予約ID> <種別>" を持つ。それ以外（手入力）には触らない。
-import { getToken, getBookings, BEDS24_PROPERTIES, nowJST, formatDateYMD, addDays } from "./beds24.js";
+import { getToken, getBookings, BEDS24_PROPERTIES, formatDateYMD, addDays } from "./beds24.js";
 import { CALENDARS, ttListEvents, ttCreateAllDay, ttDeleteEvent } from "./timetree.js";
 import { sora } from "./line.js";
 
@@ -18,7 +18,7 @@ const shiftYmd = (ymd, days) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days *
 
 /** Beds24 の予約から「あるべき予定」を作る */
 export async function buildDesired(env, token, propNames) {
-  const today = nowJST();
+  const today = new Date(); // formatDateYMD が日本時間に直す
   const from = formatDateYMD(addDays(today, -PAST_GRACE_DAYS));
   const to = formatDateYMD(addDays(today, HORIZON_DAYS));
   const desired = {}; // key -> {cal, title, startYmd, endYmd, labelId, note}
@@ -128,7 +128,7 @@ export async function runTimeTreeSync(env) {
 /** 手入力の予定（番頭タグなし）のうち、番頭が管理するタイトルと同じものを一覧／削除する（移行時の一回限りの掃除） */
 export async function cleanupManual(env, { props, apply = false } = {}) {
   const propNames = props || (env.TIMETREE_PROPS || "").split(",").map(s => s.trim()).filter(Boolean);
-  const today = formatDateYMD(nowJST());
+  const today = formatDateYMD(new Date());
   const titles = new Set();
   const cals = new Set();
   for (const n of propNames) { const p = TT_PROPS[n]; if (!p) continue; cals.add(p.cal); [p.clean, p.sameDay, p.stay].forEach(t => titles.add(t)); }

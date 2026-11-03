@@ -22,6 +22,15 @@ export function createLineClient(accessToken, channelSecret) {
     replyRaw: (replyToken, messages) => call("/message/reply", { replyToken, messages: messages.slice(0, 5) }),
     push: (to, text) => call("/message/push", { to, messages: [{ type: "text", text }] }),
     pushMessages: (to, messages) => call("/message/push", { to, messages: messages.slice(0, 5) }),
+    // グループ内の発言者の表示名（取れなければ null）
+    async memberName(groupId, userId) {
+      try {
+        const path = groupId ? `/group/${groupId}/member/${userId}` : `/profile/${userId}`;
+        const res = await fetch(`https://api.line.me/v2/bot${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!res.ok) return null;
+        return (await res.json()).displayName || null;
+      } catch { return null; }
+    },
 
     async verifySignature(body, signature) {
       if (!signature || !channelSecret) return false;
