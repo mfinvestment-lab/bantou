@@ -52,6 +52,16 @@ export default {
           const r = await fetch("https://beds24.com/api/v2/authentication/details", { headers: { accept: "application/json", token } });
           return json({ status: r.status, details: await r.json() });
         }
+        if (path === "/admin/messages-mark-test") {
+          const { getToken } = await import("./beds24.js");
+          const token = await getToken(env);
+          const id = Number(url.searchParams.get("id"));
+          const r = await fetch("https://beds24.com/api/v2/bookings/messages", {
+            method: "POST", headers: { accept: "application/json", "Content-Type": "application/json", token },
+            body: JSON.stringify([{ id, read: true }])
+          });
+          return json({ status: r.status, body: await r.json() });
+        }
         if (path === "/admin/messages-raw") {
           const { getToken, fetchUnreadGuestMessages } = await import("./beds24.js");
           return json(await fetchUnreadGuestMessages(await getToken(env), 7));
