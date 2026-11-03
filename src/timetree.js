@@ -65,17 +65,21 @@ export async function timetreeCheck(env, { fresh = false } = {}) {
   const log = [];
   const apiCalls = [];
   return withBrowser(env, async page => {
+    let apiHeaders = null;
     page.on("response", async res => {
       try {
         const req = res.request();
         const type = req.resourceType();
         const url = res.url();
         if (!["xhr", "fetch"].includes(type)) return;
-        if (!/timetree/i.test(url) || /google|_rsc=/.test(url)) return;
+        if (!/timetreeapp\.com\/api\//i.test(url)) return;
         const ct = res.headers()["content-type"] || "";
         let sample = null;
         if (/json/.test(ct)) sample = (await res.text()).slice(0, 400);
-        apiCalls.push({ method: req.method(), url, status: res.status(), sample });
+        const h = req.headers();
+        const reqHeaders = Object.fromEntries(Object.entries(h).filter(([k]) => !/^(cookie|content-length|host|user-agent|referer|origin|sec-|accept-encoding)/i.test(k)));
+        if (!apiHeaders && /\/api\/v[12]\/calendars?\b/.test(url) && req.method() === "GET") apiHeaders = reqHeaders;
+        apiCalls.push({ method: req.method(), url, status: res.status(), reqHeaders, postData: (req.postData() || "").slice(0, 600), sample });
       } catch {}
     });
 
@@ -93,6 +97,30 @@ export async function timetreeCheck(env, { fresh = false } = {}) {
     const text = (await page.evaluate(() => document.body.innerText)).slice(0, 2000);
     const inputs = await page.evaluate(() => Array.from(document.querySelectorAll("input,button")).map(e => `${e.tagName.toLowerCase()}[type=${e.type}][name=${e.name}][text=${(e.innerText || e.placeholder || "").slice(0, 30)}]`).slice(0, 30));
     const links = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]")).map(a => a.getAttribute("href")).filter(h => /calendar/i.test(h)).slice(0, 30));
-    return { ok: true, log, url: page.url(), inputs, calendarLinks: links, apiCalls: apiCalls.slice(0, 60), pageText: text };
+    if (apiHeaders) await env.KV.put("timetree:headers", JSON.stringify(apiHeaders), { expirationTtl: COOKIE_TTL });
+    return { ok: true, log, url: page.url(), apiHeaders, inputs, calendarLinks: links, apiCalls: apiCalls.slice(0, 80), pageText: text };
   }).catch(e => ({ ok: false, error: e.message, log, apiCalls: apiCalls.slice(0, 60) }));
+}
+
+// ---- 段階2: ブラウザを使わず、保存した Cookie で内部APIを直接呼ぶ ----
+export async function ttApi(env, path, { method = "GET", body } = {}) {
+  const cookies = (await env.KV.get(COOKIE_KEY, "json")) || [];
+  if (!cookies.length) throw new Error("TimeTreeのCookieがありません。/admin/timetree-check を先に実行してください");
+  const headers = (await env.KV.get("timetree:headers", "json")) || {};
+  const res = await fetch(`https://timetreeapp.com${path}`, {
+    method,
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...headers,
+      cookie: cookies.map(c => `${c.name}=${c.value}`).join("; "),
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+      origin: "https://timetreeapp.com",
+      referer: "https://timetreeapp.com/calendars"
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text.slice(0, 500); }
+  return { status: res.status, data };
 }

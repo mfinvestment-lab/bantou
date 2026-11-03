@@ -56,6 +56,12 @@ export default {
           const { timetreeCheck } = await import("./timetree.js");
           return json(await timetreeCheck(env, { fresh: url.searchParams.get("fresh") === "1" }));
         }
+        if (path === "/admin/timetree-api") {
+          const { ttApi } = await import("./timetree.js");
+          const r = await ttApi(env, url.searchParams.get("path") || "/api/v2/calendars");
+          if (typeof r.data === "object" && r.data?.events) r.data = { since: r.data.since, chunk: r.data.chunk, count: r.data.events.length, events: r.data.events.slice(0, 5) };
+          return json(r);
+        }
         if (path === "/admin/messages-mark-test") {
           const { getToken } = await import("./beds24.js");
           const token = await getToken(env);
