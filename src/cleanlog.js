@@ -20,21 +20,30 @@ const rec = {
 };
 const pb = (label, data, style = "secondary") => ({ type: "button", style, height: "sm", action: { type: "postback", label, data, displayText: label } });
 
-/** 清掃通知に付けるボタン（物件ごとに1枚） */
+/** 清掃通知（画面案③）：1枚のカードに「本日の清掃」＋物件ごとの行（アウト→次の到着、人数、リネン目安）＋開始/終了ボタン */
 export function cleaningButtonsMessage(date, facilities, { test = false } = {}) {
   const tq = test ? "&t=1" : "";
-  const bubbles = facilities.map(({ name, text }) => ({
-    type: "bubble", size: "kilo",
-    body: { type: "box", layout: "vertical", spacing: "sm", contents: [
-      { type: "text", text: name, weight: "bold", size: "md" },
-      { type: "text", text, size: "sm", color: "#555555", wrap: true }
-    ] },
-    footer: { type: "box", layout: "horizontal", spacing: "sm", contents: [
-      pb("清掃開始", `act=cstart&f=${encodeURIComponent(name)}&d=${date}${tq}`, "primary"),
-      pb("清掃終了", `act=cend&f=${encodeURIComponent(name)}&d=${date}${tq}`)
-    ] }
-  }));
-  return { type: "flex", altText: "清掃の開始・終了ボタン", contents: bubbles.length === 1 ? bubbles[0] : { type: "carousel", contents: bubbles } };
+  const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+  const [y, m, d] = date.split("-").map(Number);
+  const title = `本日の清掃 ${m}/${d}（${DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`;
+  const txt = (t, opt = {}) => ({ type: "text", text: t || "-", wrap: true, size: "sm", ...opt });
+  const sections = [];
+  facilities.forEach((f, i) => {
+    if (i > 0) sections.push({ type: "separator", margin: "md" });
+    const lines = [txt(f.name, { weight: "bold", size: "md", margin: i > 0 ? "md" : "none" })];
+    if (f.text) lines.push(txt(f.text, { color: "#6b6b6b" }));
+    if (f.linen) lines.push(txt(f.linen, { color: "#6b6b6b", size: "xs" }));
+    lines.push({ type: "box", layout: "horizontal", spacing: "sm", margin: "sm", contents: [
+      pb("清掃開始", `act=cstart&f=${encodeURIComponent(f.name)}&d=${date}${tq}`, "primary"),
+      pb("清掃終了", `act=cend&f=${encodeURIComponent(f.name)}&d=${date}${tq}`)
+    ] });
+    sections.push(...lines);
+  });
+  return { type: "flex", altText: `${title}：${facilities.map(f => f.name).join("・")}`, contents: {
+    type: "bubble", size: "mega",
+    header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [{ type: "text", text: title, color: "#ffffff", weight: "bold", size: "md" }] },
+    body: { type: "box", layout: "vertical", spacing: "xs", contents: sections }
+  } };
 }
 
 async function allowedGroup(env, facility, groupId, userId) {

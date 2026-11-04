@@ -54,6 +54,16 @@ export async function collectFacilityInfo(env) {
   return { todayStr, info };
 }
 
+// カード1物件分の文面：アウト→次の到着、次の人数泊数、リネン目安（タオル＝人数×泊数、布団＝人数）
+function cardInfo(name, i) {
+  const c = i.cleaning; const r = i.raw;
+  const next = r.checkinsToday[0] || r.nextFutureCheckin;
+  const nextWhen = r.checkinsToday.length ? "本日" : next ? next.arrival.slice(5).replace("-", "/") : null;
+  const text = `チェックアウト 10:00 → 次の到着 ${nextWhen ? `${nextWhen} 16:00` : "未定"}${r.checkinsToday.length ? "（当日イン）" : ""}`;
+  const linen = c ? `${c.count}名${c.nights}泊　タオル${c.count * c.nights}・布団${c.count}` : "";
+  return { name, text, linen };
+}
+
 export async function runCleaningNotification(env) {
   const line = haru(env);
   const { todayStr, info } = await collectFacilityInfo(env);
@@ -68,7 +78,7 @@ export async function runCleaningNotification(env) {
       const c = info[f].cleaning;
       msg += c ? `${f}　${c.count}名${c.nights}泊\n` : `${f}　なし\n`;
     }
-    const cards = fujinomiya.filter(f => info[f].cleaning).map(f => ({ name: f, text: `${info[f].cleaning.count}名${info[f].cleaning.nights}泊` }));
+    const cards = fujinomiya.filter(f => info[f].cleaning).map(f => cardInfo(f, info[f]));
     await line.pushMessages(groupId, [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards)]);
     fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim() };
   }
@@ -77,7 +87,7 @@ export async function runCleaningNotification(env) {
   const nel = info["nel.shizuoka"].cleaning;
   if (nel) {
     const msg = `おはようございます。\n本日もよろしくお願いします。\nnel.shizuoka　${nel.count}名${nel.nights}泊`;
-    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [{ name: "nel.shizuoka", text: `${nel.count}名${nel.nights}泊` }])]);
+    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [cardInfo("nel.shizuoka", info["nel.shizuoka"])])]);
     shizuokaResult = { sentTo: "静岡チーム", message: msg };
   }
 

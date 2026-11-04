@@ -98,7 +98,7 @@ async function handleGuestMessage(env, token, m) {
   const card = {
     id: cardId, messageId: m.id, bookingId: m.bookingId, property,
     guest: `${booking?.firstName || ""} ${booking?.lastName || ""}`.trim() || "ゲスト",
-    channel: ctx.booking?.channel || "-", stay: `${booking?.arrival || "?"}〜${booking?.departure || "?"}`,
+    channel: ctx.booking?.channel || "-", stay: `${booking?.arrival || "?"}〜${booking?.departure || "?"}`, pax: (booking?.numAdult || 0) + (booking?.numChild || 0) || null,
     guestMessage: text, draft, status: "pending", createdAt: new Date().toISOString()
   };
   await cards.put(env.KV, cardId, card);
@@ -128,8 +128,11 @@ export async function createTestCard(env, property, text, targetId) {
 
 // ---- LINE Flex カード ----
 export function buildCardMessage(card) {
+  // 画面案②に合わせたカード：黒ヘッダー＋種別バッジ／物件・OTA・ゲスト・日程／原文／返信案＋根拠／ボタン
   const d = card.draft;
-  const title = d.needsHuman ? "⚠️ 要確認（人が返信）" : (d.category === "complaint" ? "⚠️ クレーム" : "新着メッセージ");
+  const CAT = { question: "質問", request: "要望", complaint: "クレーム", thanks: "お礼", info: "連絡", other: "その他" };
+  const badge = d.needsHuman ? "要確認" : d.ack ? "一言返し" : (CAT[d.category] || "新着");
+  const headerBg = d.needsHuman || d.category === "complaint" ? "#c0392b" : "#1a1a1a";
   const txt = (t, opt = {}) => ({ type: "text", text: t || "-", wrap: true, size: "sm", ...opt });
   const sep = { type: "separator", margin: "md" };
   const postback = (label, action, style) => ({
@@ -139,21 +142,34 @@ export function buildCardMessage(card) {
   const row = (...btns) => ({ type: "box", layout: "horizontal", spacing: "sm", contents: btns });
   const buttons = d.needsHuman
     ? [row(postback("自分で書く", "write", "primary"), postback("対応済み", "done", "secondary"))]
-    : [row(postback("送信", "approve", "primary"), postback("修正", "edit", "secondary")), row(postback("自分で書く", "write", "secondary"), postback("対応済み", "done", "secondary"))];
+    : [postback("このまま送信", "approve", "primary"), row(postback("修正して送信", "edit", "secondary"), postback("自分で書く", "write", "secondary")), row(postback("対応済み", "done", "secondary"))];
 
+  const header = { type: "box", layout: "horizontal", backgroundColor: headerBg, paddingAll: "12px", contents: [
+    { type: "text", text: d.needsHuman ? "要確認（人が返信）" : "新着メッセージ", color: "#ffffff", weight: "bold", size: "sm", flex: 1 },
+    { type: "box", layout: "vertical", backgroundColor: "#ffffff", cornerRadius: "8px", paddingStart: "8px", paddingEnd: "8px", paddingTop: "2px", paddingBottom: "2px", flex: 0, contents: [{ type: "text", text: badge, color: headerBg, size: "xs", weight: "bold" }] }
+  ] };
+  const meta = [
+    { type: "box", layout: "baseline", contents: [txt(card.property, { weight: "bold", flex: 0 }), txt(`　${card.channel || ""}`, { color: "#6b6b6b", size: "xs", flex: 1 })] },
+    txt(`${card.guest}様　${card.stay || ""}${card.pax ? `　${card.pax}名` : ""}`, { color: "#6b6b6b", size: "xs" })
+  ];
   const body = [
-    txt(`${d.needsHuman ? "⚠️ " : d.ack ? "💬 " : ""}${card.property}｜${card.guest}様${d.ack ? "（一言返し案）" : ""}`, { weight: "bold", size: "md", color: d.needsHuman ? "#c0392b" : "#111111" }),
-    txt(card.guestMessage, { color: "#555555" }),
+    ...meta,
     sep,
-    txt(d.needsHuman ? `要確認：${d.reason}` : d.reply, { margin: "md" })
+    txt("ゲストの原文", { size: "xxs", color: "#6b6b6b", margin: "md" }),
+    { type: "box", layout: "vertical", backgroundColor: "#f4f4f4", cornerRadius: "8px", paddingAll: "10px", contents: [txt(card.guestMessage)] },
+    sep,
+    txt(d.needsHuman ? "要確認の理由" : d.ack ? "一言返し案（日本語で送信）" : "返信案（日本語で送信・OTAが翻訳）", { size: "xxs", color: "#6b6b6b", margin: "md" }),
+    txt(d.needsHuman ? d.reason : d.reply),
+    ...(!d.needsHuman && d.reason ? [txt(`根拠：${d.reason}`, { size: "xxs", color: "#6b6b6b", margin: "sm" })] : [])
   ];
   return {
     type: "flex",
-    altText: `${title}: ${card.property} ${card.guest}様「${card.guestMessage.slice(0, 40)}」`,
+    altText: `${d.needsHuman ? "要確認" : "新着"}: ${card.property} ${card.guest}様「${card.guestMessage.slice(0, 40)}」`,
     contents: {
       type: "bubble", size: "mega",
+      header,
       body: { type: "box", layout: "vertical", spacing: "sm", contents: body },
-      footer: { type: "box", layout: "vertical", spacing: "sm", contents: buttons }
+      footer: { type: "box", layout: "vertical", spacing: "sm", contents: [...buttons, txt("返金・補償・鍵の番号は自動送信されません", { size: "xxs", color: "#6b6b6b", align: "center" })] }
     }
   };
 }
