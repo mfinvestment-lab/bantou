@@ -80,7 +80,12 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (text === "今日" || text === "売上") {
-      await line.reply(event.replyToken, `「${text}」のダッシュボードは準備中です（機能5で作成）。`);
+      const id = env.LIFF_DASH_ID || env.LIFF_ID;
+      if (!id) { await line.reply(event.replyToken, `「${text}」のダッシュボードは準備中です。`); return; }
+      const tab = text === "売上" ? "sales" : "today";
+      await line.replyRaw(event.replyToken, [{ type: "flex", altText: `${text}のダッシュボード`, contents: { type: "bubble", size: "kilo",
+        body: { type: "box", layout: "vertical", contents: [{ type: "text", text: text === "売上" ? "売上（今月・来月）" : "今日の稼働・清掃・名簿・未返信", weight: "bold", wrap: true }] },
+        footer: { type: "box", layout: "vertical", contents: [{ type: "button", style: "primary", action: { type: "uri", label: "開く", uri: `https://liff.line.me/${id}?tab=${tab}` } }] } } }]);
       return;
     }
     if (text === "ヘルプ" || text === "help" || text === "メニュー") { await line.replyRaw(event.replyToken, [MENU]); return; }

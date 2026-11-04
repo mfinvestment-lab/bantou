@@ -36,6 +36,11 @@ TIMETREE_PROPS = "サクヤ,桜ハウス,nel.shizuoka"
 # LIFF（リネン入力画面）。LINE Developers の LINEログインチャネルで作った LIFF の ID と、そのチャネルID
 LIFF_ID = "2012380270-e5gpu5Go"
 LINE_LOGIN_CHANNEL_ID = "2012380270"
+# ダッシュボード用LIFF（エンドポイント /liff/dash）。未設定なら LIFF_ID を流用
+LIFF_DASH_ID = ""
+# ダッシュボードを見られる LINE userId（カンマ区切り。OWNER は常に可）／売上タブを見られる userId
+DASH_ALLOW = ""
+SALES_ALLOW = ""
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）

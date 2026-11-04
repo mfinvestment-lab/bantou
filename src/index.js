@@ -38,6 +38,10 @@ export default {
       });
     }
 
+    if (path.startsWith("/liff/dash")) {
+      const { handleDash } = await import("./dash.js");
+      return handleDash(request, env, url);
+    }
     if (path.startsWith("/liff/")) {
       const { handleLiff } = await import("./liff.js");
       return handleLiff(request, env, url);
@@ -79,6 +83,8 @@ export default {
           const b = ((await r.json()).data || [])[0] || {};
           return json({ id: b.id, name: `${b.firstName || ""} ${b.lastName || ""}`, arrival: b.arrival, departure: b.departure, status: b.status, infoItems: b.infoItems });
         }
+        if (path === "/admin/dash-today") { const { todayData } = await import("./dash.js"); return json(await todayData(env)); }
+        if (path === "/admin/dash-sales") { const { salesData } = await import("./dash.js"); return json(await salesData(env)); }
         if (path === "/admin/cleaning-status") return json(await todayCleaningStatus(env, url.searchParams.get("d") || undefined));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));

@@ -110,6 +110,7 @@ export async function runTimeTreeSync(env) {
   try {
     const r = await syncTimeTree(env, { mode: setting === "full" ? "full" : "add", apply: setting !== "dry" });
     const c = r.counts;
+    await env.KV.put("tt:last", JSON.stringify({ ok: r.errors.length === 0, at: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), ...c, errors: r.errors.length }));
     const changed = c.create + c.update + c.delete;
     if (r.errors.length) {
       await line.push(target, `⚠️ TimeTree同期で${r.errors.length}件失敗しました（${setting}）。手動で確認してください。\n` + r.errors.slice(0, 5).map(e => `${e.op} ${e.key} ${e.status}`).join("\n"));
@@ -120,6 +121,7 @@ export async function runTimeTreeSync(env) {
     return r;
   } catch (e) {
     console.error("TimeTree sync error", e.message);
+    try { await env.KV.put("tt:last", JSON.stringify({ ok: false, at: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), error: e.message.slice(0, 120) })); } catch {}
     await line.push(target, `⚠️ TimeTree同期が失敗しました：${e.message.slice(0, 200)}\n今日の清掃予定は手動で確認してください。`);
     return { error: e.message };
   }
