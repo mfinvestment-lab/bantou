@@ -46,29 +46,9 @@ export async function handleLiff(request, env, url) {
     if (!u) return json({ error: "ログイン情報を確認できません" }, 401);
     const me = u.userId === env.OWNER_USER_ID ? { loc: "*" } : await staff.get(env.KV, u.userId);
     if (!me || !(me.loc === "*" || FACILITY_LOC[facility] === me.loc)) return json({ error: "この物件の入力権限がありません" }, 403);
-    const cur = await gasGet(env, facility);
-    const before = Object.fromEntries((cur.items || []).map(it => [it.name, it.current]));
-    const diffs = [];
-    const restock = [], used = [];
-    for (const name of ITEMS) {
-      const v = counts?.[name];
-      if (v === "" || v == null || isNaN(Number(v))) continue;
-      const n = Math.max(0, Math.round(Number(v)));
-      const b = before[name] ?? 0;
-      const d = n - b;
-      diffs.push({ name, before: b, after: n, diff: d });
-      if (d > 0) restock.push({ name, qty: d });
-      else if (d < 0) used.push({ name, used: -d });
-    }
-    if (restock.length) await gasPost(env, { action: "restock", facility, items: restock });
-    if (used.length) await gasPost(env, { action: "update", facility, items: used });
-    const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
     const name = (await staff.get(env.KV, u.userId))?.name || u.name || "スタッフ";
-    await env.KV.put(`tana:${date}:${facility}`, JSON.stringify({ by: name, userId: u.userId, at: new Date().toISOString(), diffs }), { expirationTtl: 60 * 60 * 24 * 365 });
-    const changed = diffs.filter(d => d.diff !== 0);
-    const text = `📦 棚卸 ${facility}（${name}さん）\n` + (changed.length ? changed.map(d => `${d.name}：${d.before}→${d.after}（${d.diff > 0 ? "+" : ""}${d.diff}）`).join("\n") : "理論在庫と一致（差なし）");
-    try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, text); } catch {}
-    return json({ ok: true, facility, diffs, message: text });
+    const r = await applyStockCount(env, facility, counts, { name, userId: u.userId });
+    return json({ ok: true, facility, diffs: r.diffs, message: r.text });
   }
   return new Response("Not found", { status: 404 });
 }
@@ -128,3 +108,30 @@ function render(){
 }
 main();
 </script></body></html>`;
+
+/** 棚卸の反映：入力された「今ある枚数」と在庫シートの差を restock/update で合わせ、SORAに差分を通知 */
+export async function applyStockCount(env, facility, counts, { name = "スタッフ", userId = "" } = {}) {
+  const cur = await gasGet(env, facility);
+  const before = Object.fromEntries((cur.items || []).map(it => [it.name, it.current]));
+  const diffs = [];
+  const restock = [], used = [];
+  for (const item of ITEMS) {
+    const v = counts?.[item];
+    if (v === "" || v == null || isNaN(Number(v))) continue;
+    const n = Math.max(0, Math.round(Number(v)));
+    const b = before[item] ?? 0;
+    const d = n - b;
+    diffs.push({ name: item, before: b, after: n, diff: d });
+    if (d > 0) restock.push({ name: item, qty: d });
+    else if (d < 0) used.push({ name: item, used: -d });
+  }
+  if (restock.length) await gasPost(env, { action: "restock", facility, items: restock });
+  if (used.length) await gasPost(env, { action: "update", facility, items: used });
+  const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+  await env.KV.put(`tana:${date}:${facility}`, JSON.stringify({ by: name, userId, at: new Date().toISOString(), diffs }), { expirationTtl: 60 * 60 * 24 * 365 });
+  const changed = diffs.filter(d => d.diff !== 0);
+  const text = `📦 棚卸 ${facility}（${name}さん）\n` + (changed.length ? changed.map(d => `${d.name}：${d.before}→${d.after}（${d.diff > 0 ? "+" : ""}${d.diff}）`).join("\n") : "理論在庫と一致（差なし）");
+  try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, text); } catch {}
+  return { diffs, text, count: diffs.length };
+}
+export { ITEMS as LINEN_ITEMS };

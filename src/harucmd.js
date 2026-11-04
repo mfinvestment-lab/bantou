@@ -41,6 +41,8 @@ export async function handleHaruDirect(env, event) {
   const groupId = event.source.groupId || null;
   const groupLoc = groupId ? GROUP_LOC(env)[groupId] : null;
   if (groupId && !groupLoc) return false;               // 清掃グループ以外のグループは対象外
+  // 「棚卸 物件名」＋品目ごとの「今ある枚数」（グループ・1対1どちらでも）
+  if (/^棚卸\s*\S/.test(text) && text.includes("\n")) return await handleStockCountText(env, event, text, me, isOwner);
   if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ", "リネン入力", "棚卸"].includes(text)) return false; // グループでは在庫BOTを優先
   // グループなら担当エリア＝そのグループ。個人チャットなら登録済みエリア
   const me = groupLoc ? { loc: groupLoc } : await staff.get(env.KV, userId);
@@ -114,4 +116,26 @@ export async function staffAllowed(env, userId, facility) {
   if (userId === env.OWNER_USER_ID) return true;
   const me = await staff.get(env.KV, userId);
   return !!me && FACILITY_LOC[facility] === me.loc;
+}
+
+const FAC_ALIAS = { "サクヤ": "サクヤ", "さくや": "サクヤ", "桜ハウス": "桜ハウス", "ハウス": "桜ハウス", "さくらハウス": "桜ハウス", "nel": "nel.shizuoka", "ネル": "nel.shizuoka", "nel.shizuoka": "nel.shizuoka", "静岡": "nel.shizuoka" };
+async function handleStockCountText(env, event, text, me, isOwner) {
+  const line = haru(env);
+  const { applyStockCount, LINEN_ITEMS } = await import("./liff.js");
+  const [head, ...lines] = text.split("\n");
+  const fkey = Object.keys(FAC_ALIAS).find(k => head.includes(k));
+  const facility = fkey ? FAC_ALIAS[fkey] : null;
+  if (!facility) { await line.reply(event.replyToken, "形式：\n棚卸 物件名\nバスタオル 28\nフェイスタオル 40\n（書いた品目だけ更新します）"); return true; }
+  if (!isOwner && !(me && FACILITY_LOC[facility] === me.loc)) { await line.reply(event.replyToken, `${facility} はこのグループ／担当エリアの物件ではありません。`); return true; }
+  const counts = {};
+  for (const l of lines) {
+    const item = LINEN_ITEMS.find(it => l.includes(it));
+    const m = l.match(/(\d+)/);
+    if (item && m) counts[item] = Number(m[1]);
+  }
+  if (!Object.keys(counts).length) { await line.reply(event.replyToken, "品目と枚数が読み取れませんでした。例：バスタオル 28"); return true; }
+  const name = me?.name || (await line.memberName(event.source.groupId || null, event.source.userId)) || "スタッフ";
+  const r = await applyStockCount(env, facility, counts, { name, userId: event.source.userId });
+  await line.reply(event.replyToken, `✅ ${facility} の棚卸を反映しました（${r.count}品目）\n` + r.diffs.map(d => `${d.name}　${d.after}枚${d.diff ? `（${d.diff > 0 ? "+" : ""}${d.diff}）` : ""}`).join("\n"));
+  return true;
 }
