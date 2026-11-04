@@ -26,10 +26,12 @@ async function allProperties(env, token) {
   if (!map) { map = await fetchPropertyMap(token); await propsCache.set(env.KV, map); }
   const main = Object.keys(BEDS24_PROPERTIES);
   const names = {};
-  for (const [id, n] of Object.entries(map)) names[String(id)] = normalizeProperty(n);
+  for (const [id, n] of Object.entries(map)) { if (/new property/i.test(n)) continue; names[String(id)] = normalizeProperty(n); }
   const order = [...main.map(n => Object.keys(names).find(id => names[id] === n)).filter(Boolean), ...Object.keys(names).filter(id => !main.includes(names[id])).sort((a, b) => names[a].localeCompare(names[b]))];
   return { names, order };
 }
+const DISPLAY = { "The Bunkhouse Nagoya": "Bunkhouse", "SimpleStayShibuyaShinjyuku": "SimpleStay", "SimpleStay Shibuya Shinjyuku": "SimpleStay", "アパートメントねね": "ねね" };
+const disp = n => DISPLAY[n] || n;
 const groupBy = (list, names) => { const g = {}; for (const b of list) (g[names[String(b.propertyId)] || String(b.propertyId)] ||= []).push(b); return g; };
 const monthRange = (d) => { const y = d.getFullYear(), m = d.getMonth(); const s = new Date(Date.UTC(y, m, 1)), e = new Date(Date.UTC(y, m + 1, 0)); return { from: s.toISOString().slice(0, 10), to: e.toISOString().slice(0, 10), label: `${y}年${m + 1}月`, days: e.getUTCDate() }; };
 
@@ -52,7 +54,7 @@ export async function todayData(env) {
   for (const id of order) {
     const name = names[id];
     const c = cleaning[name];
-    props[name] = {
+    props[disp(name)] = {
       checkouts: (gD[name] || []).map(fmt),
       checkins: (gA[name] || []).map(fmt),
       checkinsTomorrow: (gT[name] || []).map(fmt),
@@ -77,7 +79,7 @@ export async function todayData(env) {
 export async function salesData(env) {
   const token = await getToken(env);
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-  const months = [monthRange(now), monthRange(new Date(now.getFullYear(), now.getMonth() + 1, 1))];
+  const months = [-1, 0, 1, 2, 3, 4].map(k => monthRange(new Date(now.getFullYear(), now.getMonth() + k, 1)));
   const { names, order } = await allProperties(env, token);
   const out = [];
   for (const m of months) {
@@ -89,10 +91,11 @@ export async function salesData(env) {
       const list = g[name] || [];
       const revenue = list.reduce((s, b) => s + (Number(b.price) || 0), 0);
       const n = list.reduce((s, b) => s + nights(b), 0);
-      row.props[name] = { bookings: list.length, nights: n, occupancy: Math.round((n / m.days) * 100), revenue: Math.round(revenue) };
+      row.props[disp(name)] = { bookings: list.length, nights: n, occupancy: Math.round((n / m.days) * 100), revenue: Math.round(revenue), adr: n ? Math.round(revenue / n) : 0 };
       row.total += revenue; row.nightsTotal += n;
     }
     row.total = Math.round(row.total);
+    row.adr = row.nightsTotal ? Math.round(row.total / row.nightsTotal) : 0;
     out.push(row);
   }
   return { months: out };
@@ -173,8 +176,8 @@ function t(iso){return new Date(iso).toLocaleTimeString('ja-JP',{hour:'2-digit',
 function renderSales(d){
   let h='';
   for(const m of d.months){
-    h+='<div class="card"><h2>'+m.month+'</h2><div class="big">'+yen(m.total)+'</div><div class="muted">到着日ベース・キャンセル除く・'+m.nightsTotal+'泊</div><table><tr><th>物件</th><th>予約</th><th>泊</th><th>稼働</th><th>売上</th></tr>';
-    for(const [n,p] of Object.entries(m.props)) h+='<tr><td>'+n+'</td><td>'+p.bookings+'</td><td>'+p.nights+'</td><td>'+p.occupancy+'%</td><td>'+yen(p.revenue)+'</td></tr>';
+    h+='<div class="card"><h2>'+m.month+'</h2><div class="big">'+yen(m.total)+'</div><div class="muted">到着日ベース・キャンセル除く・'+m.nightsTotal+'泊・ADR '+yen(m.adr)+'</div><table><tr><th>物件</th><th>泊</th><th>稼働</th><th>ADR</th><th>売上</th></tr>';
+    for(const [n,p] of Object.entries(m.props)) h+='<tr><td>'+n+'</td><td>'+p.nights+'</td><td>'+p.occupancy+'%</td><td>'+yen(p.adr)+'</td><td>'+yen(p.revenue)+'</td></tr>';
     h+='</table></div>';
   }
   return h;
