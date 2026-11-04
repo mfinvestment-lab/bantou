@@ -1,5 +1,6 @@
 // ダッシュボード（LIFF）: 今日の稼働・清掃・名簿・未返信、売上（許可ユーザーのみ）
-import { BEDS24_PROPERTIES, getToken, getBookings, formatDateYMD, addDays } from "./beds24.js";
+import { BEDS24_PROPERTIES, getToken, getBookings, formatDateYMD, addDays, fetchPropertyMap } from "./beds24.js";
+import { props as propsCache, normalizeProperty } from "./store.js";
 import { todayCleaningStatus } from "./cleanlog.js";
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json; charset=utf-8" } });
@@ -19,6 +20,17 @@ const allow = (env, key, userId) => userId === env.OWNER_USER_ID || (env[key] ||
 const guestName = b => `${b.firstName || ""} ${b.lastName || ""}`.trim() || "ゲスト";
 const pax = b => (b.numAdult || 0) + (b.numChild || 0);
 const nights = b => Math.round((Date.parse(b.departure) - Date.parse(b.arrival)) / 86400000);
+// 全物件（Beds24）。先頭は清掃ボタンのある3物件、残りは名前順
+async function allProperties(env, token) {
+  let map = await propsCache.get(env.KV);
+  if (!map) { map = await fetchPropertyMap(token); await propsCache.set(env.KV, map); }
+  const main = Object.keys(BEDS24_PROPERTIES);
+  const names = {};
+  for (const [id, n] of Object.entries(map)) names[String(id)] = normalizeProperty(n);
+  const order = [...main.map(n => Object.keys(names).find(id => names[id] === n)).filter(Boolean), ...Object.keys(names).filter(id => !main.includes(names[id])).sort((a, b) => names[a].localeCompare(names[b]))];
+  return { names, order };
+}
+const groupBy = (list, names) => { const g = {}; for (const b of list) (g[names[String(b.propertyId)] || String(b.propertyId)] ||= []).push(b); return g; };
 const monthRange = (d) => { const y = d.getFullYear(), m = d.getMonth(); const s = new Date(Date.UTC(y, m, 1)), e = new Date(Date.UTC(y, m + 1, 0)); return { from: s.toISOString().slice(0, 10), to: e.toISOString().slice(0, 10), label: `${y}年${m + 1}月`, days: e.getUTCDate() }; };
 
 /** 今日タブのデータ */
@@ -27,20 +39,24 @@ export async function todayData(env) {
   const today = formatDateYMD(new Date());
   const tomorrow = formatDateYMD(addDays(new Date(), 1));
   const cleaning = await todayCleaningStatus(env, today);
+  const { names, order } = await allProperties(env, token);
+  const ok = b => b.status !== "cancelled";
+  const [arr, dep, arrT] = await Promise.all([
+    getBookings(token, `arrivalFrom=${today}&arrivalTo=${today}&includeInfoItems=true`),
+    getBookings(token, `departureFrom=${today}&departureTo=${today}`),
+    getBookings(token, `arrivalFrom=${tomorrow}&arrivalTo=${tomorrow}&includeInfoItems=true`)
+  ]);
+  const gA = groupBy(arr.filter(ok), names), gD = groupBy(dep.filter(ok), names), gT = groupBy(arrT.filter(ok), names);
+  const fmt = b => ({ id: b.id, name: guestName(b), pax: pax(b), nights: nights(b), channel: b.channel || b.referer || "直", registered: (b.infoItems || []).some(i => /GUESTDONE/i.test(i.code || "")) });
   const props = {};
-  for (const [name, p] of Object.entries(BEDS24_PROPERTIES)) {
-    const [arr, dep, arrT] = await Promise.all([
-      getBookings(token, `propertyId=${p.propId}&arrivalFrom=${today}&arrivalTo=${today}&includeInfoItems=true`),
-      getBookings(token, `propertyId=${p.propId}&departureFrom=${today}&departureTo=${today}`),
-      getBookings(token, `propertyId=${p.propId}&arrivalFrom=${tomorrow}&arrivalTo=${tomorrow}&includeInfoItems=true`)
-    ]);
-    const ok = b => b.status !== "cancelled";
-    const fmt = b => ({ id: b.id, name: guestName(b), pax: pax(b), nights: nights(b), channel: b.channel || b.referer || "直", registered: (b.infoItems || []).some(i => /GUESTDONE/i.test(i.code || "")) });
+  for (const id of order) {
+    const name = names[id];
     const c = cleaning[name];
     props[name] = {
-      checkouts: dep.filter(ok).map(fmt),
-      checkins: arr.filter(ok).map(fmt),
-      checkinsTomorrow: arrT.filter(ok).map(fmt),
+      checkouts: (gD[name] || []).map(fmt),
+      checkins: (gA[name] || []).map(fmt),
+      checkinsTomorrow: (gT[name] || []).map(fmt),
+      hasCleaningButtons: !!BEDS24_PROPERTIES[name],
       cleaning: c ? { startAt: c.startAt, startBy: c.startBy, endAt: c.endAt, endBy: c.endBy, early: c.early ? { time: c.early.time, sent: c.early.results?.filter(r => !r.test).length || 0 } : null } : null
     };
   }
@@ -62,12 +78,15 @@ export async function salesData(env) {
   const token = await getToken(env);
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
   const months = [monthRange(now), monthRange(new Date(now.getFullYear(), now.getMonth() + 1, 1))];
+  const { names, order } = await allProperties(env, token);
   const out = [];
   for (const m of months) {
     const row = { month: m.label, props: {}, total: 0, nightsTotal: 0 };
-    for (const [name, p] of Object.entries(BEDS24_PROPERTIES)) {
-      // 到着日が当月の予約を当月売上として集計（簡易）
-      const list = (await getBookings(token, `propertyId=${p.propId}&arrivalFrom=${m.from}&arrivalTo=${m.to}`)).filter(b => b.status !== "cancelled");
+    const all = (await getBookings(token, `arrivalFrom=${m.from}&arrivalTo=${m.to}`)).filter(b => b.status !== "cancelled");
+    const g = groupBy(all, names);
+    for (const id of order) {
+      const name = names[id];
+      const list = g[name] || [];
       const revenue = list.reduce((s, b) => s + (Number(b.price) || 0), 0);
       const n = list.reduce((s, b) => s + nights(b), 0);
       row.props[name] = { bookings: list.length, nights: n, occupancy: Math.round((n / m.days) * 100), revenue: Math.round(revenue) };
@@ -102,7 +121,7 @@ export async function handleDash(request, env, url) {
 }
 
 const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>番頭ダッシュボード</title>
+<title>ダッシュボード</title>
 <style>
 body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:#f4f4f4;color:#222}
 .tabs{display:flex;background:#fff;position:sticky;top:0;border-bottom:1px solid #ddd}
@@ -138,7 +157,7 @@ function renderToday(d){
   let h='<div class="muted">'+d.today+' 時点</div>';
   for(const [name,p] of Object.entries(d.props)){
     const c=p.cleaning;
-    const st=!p.checkouts.length?'<span class="muted">清掃なし</span>':c&&c.endAt?'<span class="ok">✅ 終了 '+t(c.endAt)+'（'+c.endBy+'）'+(c.early&&c.early.sent?' → '+c.early.time+'〜アーリーイン案内済':'')+'</span>':c&&c.startAt?'<span>🧹 '+t(c.startAt)+'〜 清掃中（'+c.startBy+'）</span>':'<span class="warn">未着手</span>';
+    const st=!p.hasCleaningButtons?'<span class="muted">（記録対象外）</span>':!p.checkouts.length?'<span class="muted">清掃なし</span>':c&&c.endAt?'<span class="ok">✅ 終了 '+t(c.endAt)+'（'+c.endBy+'）'+(c.early&&c.early.sent?' → '+c.early.time+'〜アーリーイン案内済':'')+'</span>':c&&c.startAt?'<span>🧹 '+t(c.startAt)+'〜 清掃中（'+c.startBy+'）</span>':'<span class="warn">未着手</span>';
     h+='<div class="card"><h2>'+name+'</h2>';
     h+='<div class="line"><span>アウト</span><span>'+(p.checkouts.map(g).join('<br>')||'—')+'</span></div>';
     h+='<div class="line"><span>イン</span><span>'+(p.checkins.map(x=>g(x)+(x.registered?' <span class="ok">名簿済</span>':' <span class="warn">名簿未</span>')).join('<br>')||'—')+'</span></div>';
