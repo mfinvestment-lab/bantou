@@ -6,12 +6,15 @@ export const BEDS24_PROPERTIES = {
   "nel.shizuoka": { propId: "311749", location: "静岡", maxGuests: 7 }
 };
 
+// アクセストークンは KV に20分キャッシュ（Beds24のトークンは24時間有効。毎回取り直すと遅い）
 export async function getToken(env) {
+  if (env.KV) { const t = await env.KV.get("beds24:token"); if (t) return t; }
   const res = await fetch("https://beds24.com/api/v2/authentication/token", {
     headers: { accept: "application/json", refreshToken: env.BEDS24_REFRESH_TOKEN }
   });
   const data = await res.json();
   if (!res.ok || !data.token) throw new Error(`Beds24トークン取得エラー: ${JSON.stringify(data)}`);
+  if (env.KV) await env.KV.put("beds24:token", data.token, { expirationTtl: 60 * 20 });
   return data.token;
 }
 

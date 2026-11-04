@@ -89,8 +89,8 @@ export async function dayData(env, date) {
   // 未返信カード
   try {
     const l = await env.KV.list({ prefix: "card:" });
-    for (const k of l.keys.slice(0, 100)) {
-      const card = await env.KV.get(k.name, "json");
+    const cardsAll = await Promise.all(l.keys.slice(0, 100).map(k => env.KV.get(k.name, "json")));
+    for (const card of cardsAll) {
       if (card?.status === "pending" && !card.test) todo.push({ kind: "reply", property: disp(card.property), guest: card.guest, text: `返信待ち ${card.createdAt ? hhmm(card.createdAt) : ""} 受信`, snippet: (card.guestMessage || "").slice(0, 50) });
     }
   } catch {}
@@ -129,10 +129,11 @@ export async function salesData(env) {
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
   const months = [-1, 0, 1, 2, 3, 4].map(k => monthRange(new Date(now.getFullYear(), now.getMonth() + k, 1)));
   const { names, order } = await allProperties(env, token);
+  const lists = await Promise.all(months.map(m => getBookings(token, `arrivalFrom=${m.from}&arrivalTo=${m.to}`)));
   const out = [];
-  for (const m of months) {
+  for (const [idx, m] of months.entries()) {
     const row = { month: m.label, props: {}, total: 0, nightsTotal: 0 };
-    const all = (await getBookings(token, `arrivalFrom=${m.from}&arrivalTo=${m.to}`)).filter(b => b.status !== "cancelled");
+    const all = lists[idx].filter(b => b.status !== "cancelled");
     const g = groupBy(all, names);
     for (const id of order) {
       const name = names[id];
@@ -146,7 +147,22 @@ export async function salesData(env) {
     row.adr = row.nightsTotal ? Math.round(row.total / row.nightsTotal) : 0;
     out.push(row);
   }
-  return { months: out };
+  return { months: out, at: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" }) };
+}
+
+// ---- キャッシュ（今日2分・売上30分）。cron でも先回りして計算しておく ----
+async function cached(env, key, ttl, fn, force = false) {
+  if (!force) { const v = await env.KV.get(key, "json"); if (v) return { ...v, cached: true }; }
+  const v = await fn();
+  await env.KV.put(key, JSON.stringify(v), { expirationTtl: ttl });
+  return v;
+}
+export const cachedToday = (env, force) => cached(env, "dash:today:" + formatDateYMD(new Date()), 120, () => dayData(env, formatDateYMD(new Date())), force);
+export const cachedSales = (env, force) => cached(env, "dash:sales", 1800, () => salesData(env), force);
+/** cron から：ダッシュボードの中身を先に計算しておく */
+export async function warmDashboard(env, { sales = false } = {}) {
+  try { await cachedToday(env, true); } catch (e) { console.error("warm today", e.message); }
+  if (sales) { try { await cachedSales(env, true); } catch (e) { console.error("warm sales", e.message); } }
 }
 
 /** 名簿の再催促（Beds24経由でゲストへ。鍵の番号は送らない） */
@@ -157,6 +173,7 @@ async function remindRegistry(env, bookingId, by) {
   const link = (b.infoItems || []).find(i => /GUESTLINK/i.test(i.code || ""))?.text || "";
   const msg = `${guestName(b)} 様\n\n本日のご宿泊にあたり、宿泊者名簿のご登録がまだ確認できておりません。旅館業法により、宿泊者全員の名簿登録が必要です。\n下記よりご登録をお願いいたします。\n${link}\n\nご登録の確認後、入室方法をお送りします。`;
   await sendGuestMessage(token, b.id, msg);
+  try { await env.KV.delete("dash:today:" + formatDateYMD(new Date())); } catch {}
   try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, `📨 名簿の再催促を送信：${guestName(b)}様（${b.arrival}）${by ? "　by " + by : ""}`); } catch {}
   return { ok: true };
 }
@@ -171,15 +188,15 @@ export async function handleDash(request, env, url) {
     return new Response(PAGE.replace("__LIFF_ID__", id), { headers: { "content-type": "text/html; charset=utf-8" } });
   }
   if (path === "/liff/dash/data" && request.method === "POST") {
-    const { idToken, tab } = await request.json();
+    const { idToken, tab, force } = await request.json();
     const u = await verifyIdToken(env, idToken);
     if (!u) return json({ error: "ログイン情報を確認できません" }, 401);
     if (!allow(env, "DASH_ALLOW", u.userId)) return json({ error: "閲覧権限がありません" }, 403);
     const canSales = allow(env, "SALES_ALLOW", u.userId);
-    if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await salesData(env)), canSales }); }
+    if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await cachedSales(env, !!force)), canSales }); }
     if (tab === "week") return json({ ...(await weekData(env)), canSales });
     if (tab === "tomorrow") return json({ ...(await dayData(env, formatDateYMD(addDays(new Date(), 1)))), canSales });
-    return json({ ...(await todayData(env)), canSales });
+    return json({ ...(await cachedToday(env, !!force)), canSales });
   }
   if (path === "/liff/dash/remind" && request.method === "POST") {
     const { idToken, bookingId } = await request.json();
@@ -225,7 +242,7 @@ td:first-child,th:first-child{text-align:left}
 .big{font-size:22px;font-weight:700;padding:10px 14px 0}
 .sub{padding:0 14px 8px}
 </style></head><body>
-<div class="hdr"><span id="title">今日</span><div class="tabs"><button id="t-sales" style="display:none">売上</button></div></div>
+<div class="hdr"><span id="title">今日</span><div class="tabs"><button id="refresh" style="display:none" aria-label="最新に更新">更新</button><button id="t-sales" style="display:none">売上</button></div></div>
 <div class="wrap" id="app">読み込み中…</div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
@@ -233,15 +250,16 @@ const LIFF_ID="__LIFF_ID__";let idToken=null,cur='today';
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function api(body){const r=await fetch('/liff/dash/data',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,...body})});return r.json();}
-async function load(tab){
+async function load(tab,force){
   cur=tab;const app=document.getElementById('app');app.textContent='読み込み中…';
-  const d=await api({tab});
+  const d=await api({tab,force:!!force});
   if(d.error){app.innerHTML='<p class="red">'+esc(d.error)+'</p>';return;}
   if(d.canSales)document.getElementById('t-sales').style.display='';
   document.getElementById('title').textContent=tab==='sales'?'売上':tab==='week'?'今週':(tab==='tomorrow'?'明日　':'今日　')+(d.label||'');
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):renderDay(d,tab);
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
+  const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
 }
 function renderDay(d,tab){
   const k=d.kpi;let h='<div class="kpi"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div><div class="'+(k.registryMissing?'warn':'')+'"><b>'+k.registryMissing+'</b><small>名簿未</small></div></div>';
@@ -271,7 +289,7 @@ function renderWeek(d){
 function renderSales(d){
   let h='';
   for(const m of d.months){
-    h+='<div class="card"><h3>'+esc(m.month)+'</h3><div class="big">'+yen(m.total)+'</div><div class="sub muted" style="font-size:12px">到着日ベース・キャンセル除く・'+m.nightsTotal+'泊・ADR '+yen(m.adr)+'</div><table><tr><th>物件</th><th>泊</th><th>稼働</th><th>ADR</th><th>売上</th></tr>';
+    h+='<div class="card"><h3>'+esc(m.month)+'</h3><div class="big">'+yen(m.total)+'</div><div class="sub muted" style="font-size:12px">到着日ベース・キャンセル除く・'+m.nightsTotal+'泊・ADR '+yen(m.adr)+(d.at?'　'+esc(d.at)+'時点':'')+'</div><table><tr><th>物件</th><th>泊</th><th>稼働</th><th>ADR</th><th>売上</th></tr>';
     for(const [n,p] of Object.entries(m.props)) h+='<tr><td>'+esc(n)+'</td><td>'+p.nights+'</td><td>'+p.occupancy+'%</td><td>'+yen(p.adr)+'</td><td>'+yen(p.revenue)+'</td></tr>';
     h+='</table></div>';
   }

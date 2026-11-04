@@ -159,6 +159,7 @@ export default {
       try { await haru(env).push(env.OWNER_USER_ID, msg); } catch (e) { console.error("エラー通知失敗:", e.message); }
     };
     if (event.cron === "0 23 * * *") {
+      ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env, { sales: true })));
       ctx.waitUntil(
         runCleaningNotification(env)
           .then(r => console.log("清掃通知 完了:", JSON.stringify(r)))
@@ -167,9 +168,11 @@ export default {
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(runDeliveryCheck(env));
     } else if (event.cron === "0 22 * * *" || event.cron === "0 9 * * *") {
+      ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env, { sales: true })));
       const { runTimeTreeSync } = await import("./ttsync.js");
       ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
     } else if (event.cron === "*/5 * * * *") {
+      ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
       ctx.waitUntil(
         pollGuestMessages(env)
           .then(r => { if (r.checked) console.log("メッセージ確認:", JSON.stringify(r)); })
