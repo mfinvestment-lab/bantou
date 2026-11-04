@@ -38,6 +38,11 @@ export default {
       });
     }
 
+    if (path.startsWith("/liff/")) {
+      const { handleLiff } = await import("./liff.js");
+      return handleLiff(request, env, url);
+    }
+
     if (request.method === "POST" && path === "/sora/webhook") {
       return handleWebhook(request, ctx, sora(env), event => handleSoraEvent(env, event));
     }

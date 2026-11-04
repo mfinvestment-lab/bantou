@@ -33,6 +33,9 @@ AUTO_ACK = "off"
 # TimeTree同期: off | dry（計算のみ）| add（追加のみ）| full（削除・変更も）。対象物件は TIMETREE_PROPS（カンマ区切り）
 TIMETREE_SYNC = "full"
 TIMETREE_PROPS = "サクヤ,桜ハウス,nel.shizuoka"
+# LIFF（リネン入力画面）。LINE Developers の LINEログインチャネルで作った LIFF の ID と、そのチャネルID
+LIFF_ID = ""
+LINE_LOGIN_CHANNEL_ID = ""
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）

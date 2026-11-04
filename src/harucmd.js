@@ -25,7 +25,8 @@ const HELP = `HARU（清掃用）の使い方
 ・清掃開始／清掃終了：下のメニューから。物件を選ぶだけ
 ・清掃終了を押すと、当日チェックインのゲストがいる場合は「準備ができました」の案内が自動で送られます（15時より前の終了のみ）
 ・今日の予定：担当エリアの本日の清掃（人数・泊数）
-・足りない物／棚卸：準備中
+・リネン入力：物件を選んで今ある枚数を入力（2週間に1回の棚卸）
+・足りない物：準備中
 ・在庫の発言（「サクヤ バスタオル 残り10」など）は今までどおり使えます
 ・グループでは「開始」「終了」「今日」と送るだけでもボタンが出ます`;
 
@@ -40,7 +41,7 @@ export async function handleHaruDirect(env, event) {
   const groupId = event.source.groupId || null;
   const groupLoc = groupId ? GROUP_LOC(env)[groupId] : null;
   if (groupId && !groupLoc) return false;               // 清掃グループ以外のグループは対象外
-  if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ"].includes(text)) return false; // グループでは在庫BOTを優先
+  if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ", "リネン入力", "棚卸"].includes(text)) return false; // グループでは在庫BOTを優先
   // グループなら担当エリア＝そのグループ。個人チャットなら登録済みエリア
   const me = groupLoc ? { loc: groupLoc } : await staff.get(env.KV, userId);
   const isOwner = !groupId && userId === env.OWNER_USER_ID;
@@ -93,8 +94,16 @@ export async function handleHaruDirect(env, event) {
     await line.reply(event.replyToken, `📅 ${today} の清掃\n${lines.join("\n")}`);
     return true;
   }
-  if (text === "足りない物" || text === "棚卸") {
-    await line.reply(event.replyToken, `「${text}」は準備中です。当面は今までどおりグループで知らせてください。`);
+  if (text === "リネン入力" || text === "棚卸") {
+    if (!me && !isOwner) { await needReg(); return true; }
+    if (!env.LIFF_ID) { await line.reply(event.replyToken, "リネン入力は準備中です。今までどおりグループで知らせてください。"); return true; }
+    await line.replyRaw(event.replyToken, [{ type: "flex", altText: "リネン入力を開く", contents: { type: "bubble", size: "kilo",
+      body: { type: "box", layout: "vertical", contents: [{ type: "text", text: "リネンの枚数を入力", weight: "bold" }, { type: "text", text: "物件を選んで、今ある枚数を入れて送信してください。", size: "sm", color: "#666666", wrap: true, margin: "sm" }] },
+      footer: { type: "box", layout: "vertical", contents: [{ type: "button", style: "primary", action: { type: "uri", label: "入力画面を開く", uri: `https://liff.line.me/${env.LIFF_ID}` } }] } } }]);
+    return true;
+  }
+  if (text === "足りない物") {
+    await line.reply(event.replyToken, "「足りない物」は準備中です。当面は今までどおりグループで知らせてください。");
     return true;
   }
   return false;
