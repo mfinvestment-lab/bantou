@@ -34,8 +34,8 @@ AUTO_ACK = "off"
 TIMETREE_SYNC = "full"
 TIMETREE_PROPS = "サクヤ,桜ハウス,nel.shizuoka"
 # LIFF（リネン入力画面）。LINE Developers の LINEログインチャネルで作った LIFF の ID と、そのチャネルID
-LIFF_ID = ""
-LINE_LOGIN_CHANNEL_ID = ""
+LIFF_ID = "2012380270-e5gpu5Go"
+LINE_LOGIN_CHANNEL_ID = "2012380270"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
