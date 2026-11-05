@@ -12,13 +12,14 @@ export const TT_PROPS = {
 };
 const TAG = /#B(\d+)\s+(clean|stay)\b/;
 const HORIZON_DAYS = 365;      // 何日先まで同期するか（手入力は半年以上先まであるため）
-const PAST_GRACE_DAYS = 1;     // 過去は昨日まで見る（今日の削除漏れ対策）
+const PAST_GRACE_DAYS = 1;     // 出発が昨日以降の予約を見る（今日の削除漏れ対策）
 const ymdOf = ms => new Date(ms).toISOString().slice(0, 10);
 const shiftYmd = (ymd, days) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
 /** Beds24 の予約から「あるべき予定」を作る */
 export async function buildDesired(env, token, propNames) {
   const today = new Date(); // formatDateYMD が日本時間に直す
+  const todayYmd = formatDateYMD(today);
   const from = formatDateYMD(addDays(today, -PAST_GRACE_DAYS));
   const to = formatDateYMD(addDays(today, HORIZON_DAYS));
   const desired = {}; // key -> {cal, title, startYmd, endYmd, labelId, note}
@@ -34,37 +35,46 @@ export async function buildDesired(env, token, propNames) {
     for (const b of list) {
       const nights = Math.round((Date.parse(b.departure) - Date.parse(b.arrival)) / 86400000);
       const sameDay = arrivals.has(b.departure);
-      desired[`${b.id}:clean`] = { cal: p.cal, title: sameDay ? p.sameDay : p.clean, startYmd: b.departure, endYmd: b.departure, labelId: p.labelClean, note: `#B${b.id} clean` };
+      // 終了日が今日より前の予定は作らない（過去には触らない。既存側も同じ基準で除外する）
+      if (b.departure >= todayYmd) desired[`${b.id}:clean`] = { cal: p.cal, title: sameDay ? p.sameDay : p.clean, startYmd: b.departure, endYmd: b.departure, labelId: p.labelClean, note: `#B${b.id} clean` };
       if (nights >= 2) {
         const s = shiftYmd(b.arrival, 1);
         const e = shiftYmd(b.departure, -1);
-        desired[`${b.id}:stay`] = { cal: p.cal, title: p.stay, startYmd: s, endYmd: e, labelId: p.labelStay, note: `#B${b.id} stay` };
+        if (e >= todayYmd) desired[`${b.id}:stay`] = { cal: p.cal, title: p.stay, startYmd: s, endYmd: e, labelId: p.labelStay, note: `#B${b.id} stay` };
       }
     }
   }
-  return { desired, stats, from, to };
+  return { desired, stats, from, to, todayYmd };
 }
 
 /** 差分を計算して（apply なら）反映する。mode: "add"（追加のみ）| "full"（削除・変更も） */
 export async function syncTimeTree(env, { props, mode = "add", apply = false } = {}) {
   const propNames = props || (env.TIMETREE_PROPS || "nel.shizuoka").split(",").map(s => s.trim()).filter(Boolean);
   const token = await getToken(env);
-  const { desired, stats, from, to } = await buildDesired(env, token, propNames);
+  const { desired, stats, from, to, todayYmd } = await buildDesired(env, token, propNames);
   const cals = [...new Set(propNames.map(n => TT_PROPS[n]?.cal).filter(Boolean))];
 
-  const existing = {}; // key -> event
+  const existing = {}; // key -> event（終了日が今日以降のものだけ差分の対象）
+  const duplicates = []; // 同じ予約IDの予定が2つ以上あれば、作成が古いものを残して消す（日付に関係なく）
   for (const cal of cals) {
+    const byKey = {};
     for (const ev of await ttListEvents(env, cal)) {
       const m = TAG.exec(ev.note || "");
       if (!m) continue;
-      if (ymdOf(ev.start_at) < from && ymdOf(ev.end_at) < from) continue; // 過去は触らない
-      existing[`${m[1]}:${m[2]}`] = ev;
+      (byKey[`${m[1]}:${m[2]}`] ||= []).push(ev);
+    }
+    for (const [key, list] of Object.entries(byKey)) {
+      list.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+      for (const ev of list.slice(1)) duplicates.push({ key, cal, title: ev.title, start: ymdOf(ev.start_at), eventId: ev.id });
+      const ev = list[0];
+      if (ymdOf(ev.end_at) < todayYmd) continue; // 過去は触らない
+      existing[key] = ev;
     }
   }
   // 対象物件の予定だけに絞る（別物件の予約IDは desired に無いので、削除対象から外す必要がある）
   const propCalOf = {}; for (const n of propNames) propCalOf[TT_PROPS[n].cal] = true;
 
-  const plan = { create: [], delete: [], update: [], keep: 0 };
+  const plan = { create: [], delete: [...duplicates], update: [], keep: 0 };
   for (const [key, d] of Object.entries(desired)) {
     const ev = existing[key];
     if (!ev) { plan.create.push({ key, ...d }); continue; }
