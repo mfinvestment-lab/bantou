@@ -7,7 +7,7 @@ import { jobs } from "./jobs.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -164,6 +164,20 @@ export async function handleSoraEvent(env, event) {
       for (const n of nums) { const c = cands[n - 1]; if (!c.a) { skipped.push(n); continue; } await faq.add(env.KV, p, c.q, c.a); added.push(n); }
       const total = (await faq.list(env.KV, p)).length;
       await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${added.length} 件追加しました（合計${total}件）${skipped.length ? `\n❓ 回答が無いため見送り：${skipped.join(", ")}` : ""}\n「FAQ一覧 ${p}」で確認。文面を直すなら「FAQ修正 ${p} 番号（改行）新しい回答」、自動返信にするなら「FAQ自動 ${p} 番号」`)]);
+      return;
+    }
+    if (cmd === "FAQ一括" || cmd === "FAQ一括登録") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const body = restLines.join("\n");
+      // 「1. Q: …（件数）\n   A: …」の並び、または「Q: …\nA: …」の並びを全部拾う
+      const pairs = [];
+      const re = /Q[:：]\s*([\s\S]*?)\n\s*A[:：]\s*([\s\S]*?)(?=\n\s*(?:\d+[.．、)]\s*)?Q[:：]|$)/g;
+      let m; while ((m = re.exec(body))) { const q = m[1].replace(/（\d+件）\s*$/, "").trim(); const a = m[2].trim(); if (q && a) pairs.push({ q, a }); }
+      if (!p || !pairs.length) { await line.reply(event.replyToken, "形式：\nFAQ一括 物件名\n1. Q: 質問\n   A: 答え\n2. Q: 質問\n   A: 答え\n…（FAQ案の結果を手直しして、そのまま貼ってOK）"); return; }
+      for (const x of pairs) await faq.add(env.KV, p, x.q, x.a);
+      await faqCandidates.clear(env.KV, p);
+      const total = (await faq.list(env.KV, p)).length;
+      await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${pairs.length} 件を一括登録しました（合計${total}件）\n` + pairs.map((x, i) => `・${x.q}`).join("\n").slice(0, 3000) + `\n\n「FAQ一覧 ${p}」で確認。直すなら「FAQ修正 ${p} 番号」`)]);
       return;
     }
     if (cmd === "FAQ修正") {
