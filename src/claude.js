@@ -23,7 +23,8 @@ export async function call(env, { model, system, messages, maxTokens = 1500 }) {
   if (res.status === 403 && model !== MODELS.fast) { console.warn("Claude 403 → fallback to", MODELS.fast); return call(env, { model: MODELS.fast, system, messages, maxTokens }); }
   if (!res.ok) throw new Error(`Claude API エラー (${res.status}): ${JSON.stringify(data).slice(0, 300)}`);
   const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-  return { text, usage: data.usage, stopReason: data.stop_reason };
+  if (!text) console.warn("Claude empty text", model, data.stop_reason, JSON.stringify((data.content || []).map(c => c.type)), JSON.stringify(data.usage));
+  return { text, usage: data.usage, stopReason: data.stop_reason, types: (data.content || []).map(c => c.type) };
 }
 
 export function extractJson(text, { truncated = false } = {}) {
@@ -35,7 +36,7 @@ export function extractJson(text, { truncated = false } = {}) {
     const body = text.slice(start);
     for (const tail of ['"}', '"]}', '}', ']}']) { try { return JSON.parse(body + tail); } catch {} }
   }
-  throw new Error((truncated ? "出力が長すぎて途中で切れました: " : "JSONが見つかりません: ") + text.slice(0, 200));
+  throw new Error((truncated ? "出力が長すぎて途中で切れました: " : "JSONが見つかりません: ") + (text ? text.slice(0, 200) : "（本文が空）"));
 }
 
 /**

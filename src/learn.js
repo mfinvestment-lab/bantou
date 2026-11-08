@@ -84,7 +84,7 @@ export async function suggestFaq(env, property, days = 180) {
   if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
   const existing = await faq.list(env.KV, property);
   const rulesText = (await rules.get(env.KV, property)) || "";
-  const pairsText = c.pairs.slice(-120).map((p, i) => `${i + 1}. ゲスト: ${p.q.slice(0, 300)}\n   返信: ${p.a.slice(0, 300)}`).join("\n");
+  const pairsText = c.pairs.slice(-80).map((p, i) => `${i + 1}. ゲスト: ${p.q.slice(0, 200)}\n   返信: ${p.a.slice(0, 250)}`).join("\n");
   const unText = c.unanswered.slice(-30).map(u => `- ${u.q.slice(0, 200)}`).join("\n");
   const system = `あなたは日本の宿泊施設「${property}」の運営マネージャーです。過去のゲストとのやり取りから、FAQ（よくある質問と回答）の候補を作ります。
 
@@ -105,7 +105,8 @@ ${existing.length ? existing.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}`).
 ## 出力形式（JSONのみ）
 {"candidates":[{"q":"…","a":"…","count":3,"needsAnswer":false,"conflict":null,"sourceIds":[1,5]}]}`;
   const user = `## 過去のやり取り（ゲスト→スタッフ返信、古い順）\n${pairsText || "（なし）"}\n\n## 返信が無かったゲストの質問\n${unText || "（なし）"}`;
-  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 3000 });
+  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 8000 });
+  if (!out.text) throw new Error(`Claudeの応答が空でした（stop=${out.stopReason}, blocks=${(out.types || []).join(",")}, in=${out.usage?.input_tokens}, out=${out.usage?.output_tokens}）`);
   const r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
   const candidates = (r.candidates || []).filter(x => x && x.q).map(x => ({ q: String(x.q).trim(), a: String(x.a || "").trim(), count: Number(x.count) || 1, needsAnswer: !!x.needsAnswer || !x.a, conflict: x.conflict || null }));
   await faqCandidates.set(env.KV, property, candidates);
