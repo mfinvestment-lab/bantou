@@ -11,8 +11,23 @@ const WINDOW_MS = 48 * 60 * 60 * 1000;
 
 function ymd(d) { return d.toISOString().slice(0, 10); }
 
-/** Beds24の過去スレッドから「ゲストの質問 → スタッフ返信」のペアを集める（共通処理） */
+/** Beds24 API の利用枠（429 Credit limit）に当たったら少し待って1回だけやり直す */
+async function withRetry(fn, waitMs = 65000) {
+  try { return await fn(); }
+  catch (e) {
+    if (!/429|Credit limit/i.test(e.message)) throw e;
+    console.warn("Beds24 429 → wait", waitMs);
+    await new Promise(r => setTimeout(r, waitMs));
+    return fn();
+  }
+}
+
+/** Beds24の過去スレッドから「ゲストの質問 → スタッフ返信」のペアを集める（共通処理）。結果は24時間キャッシュ */
 async function collectPairs(env, property, days, { maxBookings = MAX_BOOKINGS } = {}) {
+  const cacheKey = `pairs:${property}:${days}:${maxBookings}`;
+  const cached = await env.KV.get(cacheKey, "json");
+  if (cached) return { ...cached, cached: true };
+
   const token = await getToken(env);
   let map = await props.get(env.KV);
   if (!map) { map = await fetchPropertyMap(token); await props.set(env.KV, map); }
@@ -22,7 +37,7 @@ async function collectPairs(env, property, days, { maxBookings = MAX_BOOKINGS } 
   const now = new Date();
   const from = ymd(new Date(now.getTime() - days * 86400000));
   const to = ymd(now);
-  const bookings = (await getBookings(token, `propertyId=${propId}&arrivalFrom=${from}&arrivalTo=${to}`))
+  const bookings = (await withRetry(() => getBookings(token, `propertyId=${propId}&arrivalFrom=${from}&arrivalTo=${to}`)))
     .filter(b => b.status !== "cancelled")
     .sort((a, b) => String(a.arrival).localeCompare(String(b.arrival)))
     .slice(-maxBookings);
@@ -31,9 +46,9 @@ async function collectPairs(env, property, days, { maxBookings = MAX_BOOKINGS } 
   const unanswered = [];
   let threads = 0;
   const threadsOf = [];
-  for (let i = 0; i < bookings.length; i += 6) {
-    const chunk = bookings.slice(i, i + 6);
-    const rs = await Promise.all(chunk.map(b => fetchThread(token, b.id, days + 30).then(t => ({ b, t })).catch(() => null)));
+  for (let i = 0; i < bookings.length; i += 4) {
+    const chunk = bookings.slice(i, i + 4);
+    const rs = await Promise.all(chunk.map(b => withRetry(() => fetchThread(token, b.id, days + 30)).then(t => ({ b, t })).catch(e => { console.warn("thread fetch failed", b.id, e.message.slice(0, 80)); return null; })));
     for (const r of rs) if (r) threadsOf.push(r);
   }
   for (const { b, t: thread } of threadsOf) {
@@ -52,7 +67,9 @@ async function collectPairs(env, property, days, { maxBookings = MAX_BOOKINGS } 
       pairs.push({ q: g.text, a: h.text, t: h.t, channel: b.channel || b.referer || "" });
     }
   }
-  return { bookings: bookings.length, threads, pairs, unanswered };
+  const result = { bookings: bookings.length, threads, pairs, unanswered };
+  if (threads > 0) await env.KV.put(cacheKey, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 });
+  return result;
 }
 
 export async function importHistory(env, property, days = 90) {
@@ -79,7 +96,7 @@ export const faqCandidates = {
 };
 
 export async function suggestFaq(env, property, days = 180) {
-  const c = await collectPairs(env, property, days, { maxBookings: 150 });
+  const c = await collectPairs(env, property, days, { maxBookings: 80 });
   if (c.error) return c;
   if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
   const existing = await faq.list(env.KV, property);
