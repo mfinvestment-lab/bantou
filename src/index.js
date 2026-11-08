@@ -120,6 +120,20 @@ export default {
           const size = url.searchParams.get("size") || "small";
           const max = parseInt(url.searchParams.get("max")) || 1000;
           const model = url.searchParams.get("model") === "careful" ? MODELS.careful : MODELS.fast;
+          if (url.searchParams.get("p")) {
+            // 実データ（キャッシュ済みのやり取り）で試す。n=使うやり取りの件数
+            const { resolveProperty } = await import("./store.js");
+            const { buildFaqPrompt } = await import("./learn.js");
+            const prop = await resolveProperty(env.KV, url.searchParams.get("p"));
+            const c = await env.KV.get(`pairs:${prop}:180:80`, "json");
+            if (!c) return json({ error: "キャッシュ済みのやり取りがありません（先にFAQ案を実行）", prop });
+            const n = parseInt(url.searchParams.get("n")) || c.pairs.length;
+            const { system, user } = await buildFaqPrompt(env, prop, { ...c, pairs: c.pairs.slice(-n) });
+            const body = { model, max_tokens: max, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages: [{ role: "user", content: user }] };
+            const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
+            const data = await res.json();
+            return json({ prop, pairsUsed: n, model, max, systemChars: system.length, userChars: user.length, status: res.status, requestId: res.headers.get("request-id"), stop: data.stop_reason, usage: data.usage, blocks: (data.content || []).map(x => x.type), textHead: (data.content || []).filter(x => x.type === "text").map(x => x.text).join("").slice(0, 300), error: data.error || null });
+          }
           const filler = "ゲスト: 駐車場はありますか？\n返信: 敷地内に駐車場はありません。近くのコインパーキングをご利用ください。\n";
           const n = size === "large" ? 400 : size === "medium" ? 120 : 3;
           const system = "あなたは宿泊施設のスタッフです。次のやり取りからFAQ候補を3件、JSONで出してください。\n" + filler.repeat(n);

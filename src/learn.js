@@ -95,10 +95,9 @@ export const faqCandidates = {
   clear: (kv, p) => kv.delete(`faqcand:${p}`)
 };
 
-export async function suggestFaq(env, property, days = 180) {
-  const c = await collectPairs(env, property, days, { maxBookings: 80 });
-  if (c.error) return c;
-  if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
+
+/** FAQ案のプロンプトを組み立てる（切り分けテストからも使う） */
+export async function buildFaqPrompt(env, property, c) {
   const existing = await faq.list(env.KV, property);
   const rulesText = (await rules.get(env.KV, property)) || "";
   const pairsText = c.pairs.slice(-80).map((p, i) => `${i + 1}. ゲスト: ${p.q.slice(0, 200)}\n   返信: ${p.a.slice(0, 250)}`).join("\n");
@@ -122,7 +121,15 @@ ${existing.length ? existing.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}`).
 ## 出力形式（JSONのみ）
 {"candidates":[{"q":"…","a":"…","count":3,"needsAnswer":false,"conflict":null,"sourceIds":[1,5]}]}`;
   const user = `## 過去のやり取り（ゲスト→スタッフ返信、古い順）\n${pairsText || "（なし）"}\n\n## 返信が無かったゲストの質問\n${unText || "（なし）"}`;
-  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 8000 });
+  return { system, user };
+}
+
+export async function suggestFaq(env, property, days = 180) {
+  const c = await collectPairs(env, property, days, { maxBookings: 80 });
+  if (c.error) return c;
+  if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
+  const { system, user } = await buildFaqPrompt(env, property, c);
+  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 6000 });
   if (!out.text) throw new Error(`Claudeの応答が空でした（stop=${out.stopReason}, blocks=${(out.types || []).join(",")}, in=${out.usage?.input_tokens}, out=${out.usage?.output_tokens}）`);
   const r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
   const candidates = (r.candidates || []).filter(x => x && x.q).map(x => ({ q: String(x.q).trim(), a: String(x.a || "").trim(), count: Number(x.count) || 1, needsAnswer: !!x.needsAnswer || !x.a, conflict: x.conflict || null }));
