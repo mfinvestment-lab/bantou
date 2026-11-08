@@ -1,5 +1,5 @@
 // ダッシュボード（LIFF）: 画面案④に沿った「今日」（KPI・要対応・物件ごとの動き）、明日、今週、売上（許可ユーザーのみ）
-import { BEDS24_PROPERTIES, getToken, getBookings, formatDateYMD, addDays, fetchPropertyMap, sendGuestMessage } from "./beds24.js";
+import { BEDS24_PROPERTIES, getToken, getBookings, formatDateYMD, addDays, fetchPropertyMap, sendGuestMessage, fetchThread } from "./beds24.js";
 import { props as propsCache, normalizeProperty } from "./store.js";
 import { todayCleaningStatus } from "./cleanlog.js";
 import { sora } from "./line.js";
@@ -63,7 +63,7 @@ export async function dayData(env, date) {
   ]);
   const gA = groupBy(arr.filter(ok), names), gD = groupBy(dep.filter(ok), names);
   const rows = [];
-  const kpi = { in: 0, out: 0, clean: 0, registryMissing: 0 };
+  const kpi = { in: 0, out: 0, clean: 0, registryMissing: 0, reply: 0, cleanPending: 0 };
   const todo = [];
   for (const id of order) {
     const name = names[id];
@@ -78,6 +78,7 @@ export async function dayData(env, date) {
       else if (c?.endAt) clean = { state: "done", text: `完了 ${hhmm(c.endAt)}`, by: c.endBy };
       else if (c?.startAt) clean = { state: "working", text: `作業中 ${hhmm(c.startAt)}〜`, by: c.startBy };
       else clean = { state: "pending", text: "未着手" };
+      if (clean.state === "pending" || clean.state === "working") kpi.cleanPending++;
     }
     const inText = ins.length ? (c?.early?.time && c.early.results?.some(r => !r.test) ? `${c.early.time}〜` : (CHECKIN[name] || "—")) : (outs.length ? "—" : "—");
     const stay = !ins.length && !outs.length;
@@ -91,7 +92,7 @@ export async function dayData(env, date) {
     const l = await env.KV.list({ prefix: "card:" });
     const cardsAll = await Promise.all(l.keys.slice(0, 100).map(k => env.KV.get(k.name, "json")));
     for (const card of cardsAll) {
-      if (card?.status === "pending" && !card.test) todo.push({ kind: "reply", property: disp(card.property), guest: card.guest, text: `返信待ち ${card.createdAt ? hhmm(card.createdAt) : ""} 受信`, snippet: (card.guestMessage || "").slice(0, 50) });
+      if (card?.status === "pending" && !card.test) { kpi.reply++; todo.push({ kind: "reply", property: disp(card.property), guest: card.guest, text: `返信待ち ${card.createdAt ? hhmm(card.createdAt) : ""} 受信`, snippet: (card.guestMessage || "").slice(0, 50) }); }
     }
   } catch {}
   const ttLast = await env.KV.get("tt:last", "json");
@@ -150,6 +151,35 @@ export async function salesData(env) {
   return { months: out, at: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" }) };
 }
 
+/** カレンダー（ガント）：start から days 日分、全物件の予約バー */
+export async function calendarData(env, start, days = 28) {
+  const token = await getToken(env);
+  const { names, order } = await allProperties(env, token);
+  const end = formatDateYMD(addDays(new Date(Date.parse(start + "T00:00:00Z")), days - 1));
+  // 期間に少しでも重なる予約：到着 ≤ 終了日 かつ 出発 ≥ 開始日
+  const list = (await getBookings(token, `arrivalTo=${end}&departureFrom=${start}&includeInfoItems=true`)).filter(b => b.status !== "cancelled" && b.arrival && b.departure);
+  const dayList = [];
+  for (let i = 0; i < days; i++) { const d = formatDateYMD(addDays(new Date(Date.parse(start + "T00:00:00Z")), i)); const [y, m, dd] = d.split("-").map(Number); dayList.push({ d, m, dd, dow: new Date(Date.UTC(y, m - 1, dd)).getUTCDay() }); }
+  const chan = b => { const c = String(b.channel || b.referer || "").toLowerCase(); return /airbnb/.test(c) ? "airbnb" : /booking/.test(c) ? "booking" : /agoda/.test(c) ? "agoda" : /expedia/.test(c) ? "expedia" : "direct"; };
+  const bookings = list.map(b => ({ ...fmtBooking(b), prop: disp(names[String(b.propertyId)] || String(b.propertyId)), chan: chan(b) }));
+  return { start, end, days: dayList, today: formatDateYMD(new Date()), props: order.map(id => disp(names[id])), bookings };
+}
+
+/** 予約1件の詳細（カレンダーのタップ用）：基本情報＋直近メッセージ＋開くためのリンク。鍵の番号は含めない */
+export async function bookingDetail(env, bookingId) {
+  const token = await getToken(env);
+  const b = ((await getBookings(token, `id=${bookingId}&includeInfoItems=true`)) || [])[0];
+  if (!b) return { error: "予約が見つかりません" };
+  const { names } = await allProperties(env, token);
+  let thread = [];
+  try { thread = (await fetchThread(token, b.id, 120)).map(t => ({ from: t.source === "guest" ? "guest" : "host", text: String(t.message || "").trim(), time: t.time })).filter(m => m.text).sort((x, y) => Date.parse(x.time) - Date.parse(y.time)).slice(-8); } catch {}
+  const c = String(b.channel || b.referer || "").toLowerCase();
+  const links = [{ label: "Beds24で開く", url: `https://beds24.com/control3.php?pagetype=bookingedit&bookid=${b.id}` }];
+  if (/airbnb/.test(c) && b.apiReference) links.unshift({ label: "Airbnbで開く", url: `https://www.airbnb.jp/hosting/reservations/details/${encodeURIComponent(b.apiReference)}` });
+  if (/booking/.test(c)) links.unshift({ label: "Booking.comで開く", url: "https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/search_reservations.html?term=" + encodeURIComponent(b.apiReference || "") });
+  return { ...fmtBooking(b), prop: disp(names[String(b.propertyId)] || String(b.propertyId)), price: Number(b.price) || 0, status: b.status, notes: (b.notes || "").slice(0, 300), comments: (b.comments || "").slice(0, 300), thread, links };
+}
+
 // ---- キャッシュ（今日2分・売上30分）。cron でも先回りして計算しておく ----
 async function cached(env, key, ttl, fn, force = false) {
   if (!force) { const v = await env.KV.get(key, "json"); if (v) return { ...v, cached: true }; }
@@ -188,13 +218,15 @@ export async function handleDash(request, env, url) {
     return new Response(PAGE.replace("__LIFF_ID__", id), { headers: { "content-type": "text/html; charset=utf-8" } });
   }
   if (path === "/liff/dash/data" && request.method === "POST") {
-    const { idToken, tab, force } = await request.json();
+    const { idToken, tab, force, start, bookingId } = await request.json();
     const u = await verifyIdToken(env, idToken);
     if (!u) return json({ error: "ログイン情報を確認できません" }, 401);
     if (!allow(env, "DASH_ALLOW", u.userId)) return json({ error: "閲覧権限がありません" }, 403);
     const canSales = allow(env, "SALES_ALLOW", u.userId);
     if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await cachedSales(env, !!force)), canSales }); }
     if (tab === "week") return json({ ...(await weekData(env)), canSales });
+    if (tab === "cal") { const st = /^\d{4}-\d{2}-\d{2}$/.test(start || "") ? start : formatDateYMD(addDays(new Date(), -2)); return json({ ...(await calendarData(env, st, 28)), canSales }); }
+    if (tab === "detail") return json({ ...(await bookingDetail(env, bookingId)), canSales });
     if (tab === "tomorrow") return json({ ...(await dayData(env, formatDateYMD(addDays(new Date(), 1)))), canSales });
     return json({ ...(await cachedToday(env, !!force)), canSales });
   }
@@ -240,36 +272,70 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:6px 4px;border-bottom:1px solid #eee;text-align:right}
 td:first-child,th:first-child{text-align:left}
 .big{font-size:22px;font-weight:700;padding:10px 14px 0}
+.cnt{display:flex;gap:8px;padding:10px 12px 0;max-width:560px;margin:0 auto}
+.cnt button{flex:1;border:1px solid #d9d9d9;background:#fff;border-radius:10px;padding:8px 4px;font-size:12px;color:#6b6b6b}
+.cnt button b{display:block;font-size:20px;color:#1a1a1a}
+.cnt button.warn{border-color:#c0392b}.cnt button.warn b{color:#c0392b}
+.calwrap{background:#fff;border-radius:10px;overflow:hidden}
+.calbar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #e5e5e5;font-size:13px}
+.calbar button{min-width:44px;min-height:36px;border:1px solid #1a1a1a;background:#fff;border-radius:8px;font-weight:700}
+.legend{display:flex;gap:10px;font-size:11px;color:#6b6b6b;padding:6px 10px;border-bottom:1px solid #e5e5e5}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:3px;vertical-align:-1px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.gantt{position:relative;display:grid}
+.gantt .lbl{position:sticky;left:0;background:#fff;z-index:2;font-size:12px;font-weight:700;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid #eee;border-right:1px solid #ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt .hd{font-size:10px;text-align:center;color:#6b6b6b;border-bottom:1px solid #ddd;border-left:1px solid #f0f0f0;padding:4px 0;line-height:1.2}
+.gantt .hd.sat{color:#1f5fbf}.gantt .hd.sun{color:#c0392b}.gantt .hd.today{background:#fff3cd;font-weight:700;color:#1a1a1a}
+.gantt .cell{border-bottom:1px solid #eee;border-left:1px solid #f3f3f3;height:40px}
+.gantt .cell.today{background:#fffbe6}
+.bar{position:absolute;height:28px;border-radius:6px;color:#fff;font-size:11px;line-height:28px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;cursor:pointer}
+.bar.airbnb{background:#e0455f}.bar.booking{background:#2a5bd7}.bar.agoda{background:#8e44ad}.bar.expedia{background:#f0a202}.bar.direct{background:#7f8c8d}
+.bar .reg{position:absolute;right:4px;top:0;font-size:12px}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.2);max-height:85vh;overflow:auto;padding:14px 16px 24px;z-index:10;max-width:560px;margin:0 auto}
+.dim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9}
+.sheet h2{margin:0 0 6px;font-size:16px}
+.kv{display:grid;grid-template-columns:70px 1fr;gap:4px 8px;font-size:13px;margin:8px 0}
+.kv span:nth-child(odd){color:#6b6b6b}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.acts a,.acts button{display:block;text-align:center;min-height:44px;line-height:44px;border-radius:8px;border:1px solid #1a1a1a;background:#fff;color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:700}
+.acts .dark{background:#1a1a1a;color:#fff}
+.msg{font-size:12px;padding:6px 8px;border-radius:8px;margin:4px 0;max-width:92%}
+.msg.guest{background:#f1f1f1}.msg.host{background:#e3f1ff;margin-left:auto}
+.msg small{display:block;color:#6b6b6b;font-size:10px}
 .sub{padding:0 14px 8px}
 </style></head><body>
-<div class="hdr"><span id="title">今日</span><div class="tabs"><button id="refresh" style="display:none" aria-label="最新に更新">更新</button><button id="t-sales" style="display:none">売上</button></div></div>
+<div class="hdr"><span id="title">今日</span><div class="tabs"><button id="refresh" style="display:none" aria-label="最新に更新">更新</button><button id="t-cal">カレンダー</button><button id="t-sales" style="display:none">売上</button></div></div>
+<div class="cnt" id="cnt" style="display:none"></div>
 <div class="wrap" id="app">読み込み中…</div>
+<div id="sheet"></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
-const LIFF_ID="__LIFF_ID__";let idToken=null,cur='today';
+const LIFF_ID="__LIFF_ID__";let idToken=null,cur='today',calStart=null;
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function api(body){const r=await fetch('/liff/dash/data',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,...body})});return r.json();}
 async function load(tab,force){
   cur=tab;const app=document.getElementById('app');app.textContent='読み込み中…';
-  const d=await api({tab,force:!!force});
+  const d=await api({tab,force:!!force,start:tab==='cal'?calStart:undefined});
   if(d.error){app.innerHTML='<p class="red">'+esc(d.error)+'</p>';return;}
   if(d.canSales)document.getElementById('t-sales').style.display='';
-  document.getElementById('title').textContent=tab==='sales'?'売上':tab==='week'?'今週':(tab==='tomorrow'?'明日　':'今日　')+(d.label||'');
-  app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):renderDay(d,tab);
+  document.getElementById('title').textContent=tab==='sales'?'売上':tab==='week'?'今週':tab==='cal'?'カレンダー':(tab==='tomorrow'?'明日　':'今日　')+(d.label||'');
+  app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):renderDay(d,tab);
+  if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
+  if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
 }
 function renderDay(d,tab){
   const k=d.kpi;let h='<div class="kpi"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div><div class="'+(k.registryMissing?'warn':'')+'"><b>'+k.registryMissing+'</b><small>名簿未</small></div></div>';
-  h+='<div class="card"><h3>要対応'+(d.todo.length?'':'　<span class="muted">なし</span>')+'</h3>';
+  h+='<div class="card" id="todo"><h3>要対応'+(d.todo.length?'':'　<span class="muted">なし</span>')+'</h3>';
   for(const t of d.todo){
     if(t.kind==='registry')h+='<div class="row"><div><b>'+esc(t.property)+' '+esc(t.guest)+'様</b><span class="red">'+esc(t.text)+'</span></div><button class="btn" data-remind="'+t.bookingId+'" data-guest="'+esc(t.guest)+'">再催促</button></div>';
     else h+='<div class="row"><div><b>'+esc(t.property)+' '+esc(t.guest)+'様</b><span class="muted">'+esc(t.text)+'　'+esc(t.snippet||'')+'</span></div><span class="muted" style="font-size:11px">SORAで確認</span></div>';
   }
   h+='</div>';
-  h+='<div class="card"><h3>物件ごとの動き</h3><div class="grid h"><span>物件</span><span>OUT</span><span>清掃</span><span>IN</span></div>';
+  h+='<div class="card" id="rows"><h3>物件ごとの動き</h3><div class="grid h"><span>物件</span><span>OUT</span><span>清掃</span><span>IN</span></div>';
   for(const r of d.rows){
     const cc=r.cleanState==='done'?'green':r.cleanState==='pending'?'red':r.cleanState==='none'?'muted':'';
     h+='<div class="grid"><span>'+esc(r.property)+'</span><span class="'+(r.stay?'muted':'')+'">'+(r.stay?'連泊':esc(r.out))+'</span><span class="'+cc+'">'+(r.stay?'なし':esc(r.clean))+'</span><span class="'+(r.inMissing?'red':'')+'">'+(r.stay?'—':esc(r.in))+'</span></div>';
@@ -277,8 +343,48 @@ function renderDay(d,tab){
   h+='</div>';
   const tt=d.timetree;
   h+='<div class="foot"><span>TimeTree同期　'+(tt?esc((tt.at||'').replace(/^\\d+\\/\\d+\\/\\d+\\s*/,''))+(tt.ok?' 成功':' 失敗'):'未実行')+'</span><span>Beds24　'+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})+' 取得</span></div>';
-  h+='<div class="nav"><button data-nav="today" class="'+(tab==='today'?'on':'')+'">今日</button><button data-nav="tomorrow" class="'+(tab==='tomorrow'?'on':'')+'">明日</button><button data-nav="week">今週</button></div>';
+  h+='<div class="nav"><button data-nav="today" class="'+(tab==='today'?'on':'')+'">今日</button><button data-nav="tomorrow" class="'+(tab==='tomorrow'?'on':'')+'">明日</button><button data-nav="week">今週</button><button data-nav="cal">カレンダー</button></div>';
   return h;
+}
+function renderCounters(k){
+  const c=document.getElementById('cnt');if(!k){c.style.display='none';return;}c.style.display='';
+  c.innerHTML='<button class="'+(k.reply?'warn':'')+'" data-go="todo"><b>'+(k.reply||0)+'</b>返信待ち</button><button class="'+(k.registryMissing?'warn':'')+'" data-go="todo"><b>'+k.registryMissing+'</b>名簿未</button><button data-go="rows"><b>'+(k.cleanPending||0)+'</b>清掃 未完了</button>';
+  c.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{if(cur!=='today')return load('today');const el=document.getElementById(b.dataset.go);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});});
+}
+function renderCal(d){
+  const W=34,L=84,n=d.days.length;const t0=Date.parse(d.start+'T00:00:00Z');const idx=ymd=>Math.round((Date.parse(ymd+'T00:00:00Z')-t0)/86400000);
+  const prev=new Date(t0-7*86400000).toISOString().slice(0,10),next=new Date(t0+7*86400000).toISOString().slice(0,10),today=new Date(Date.parse(d.today+'T00:00:00Z')-2*86400000).toISOString().slice(0,10);
+  const e=d.days[n-1];
+  let h='<div class="calwrap"><div class="calbar"><button data-cal="'+prev+'">◀</button><span><b>'+d.days[0].m+'/'+d.days[0].dd+'〜'+e.m+'/'+e.dd+'</b></span><span><button data-cal="'+today+'" style="margin-right:6px">今日</button><button data-cal="'+next+'">▶</button></span></div>';
+  h+='<div class="legend"><span><i style="background:#e0455f"></i>Airbnb</span><span><i style="background:#2a5bd7"></i>Booking</span><span><i style="background:#8e44ad"></i>Agoda</span><span><i style="background:#7f8c8d"></i>直・他</span><span>✔名簿済 ✖未</span></div>';
+  h+='<div class="scroll"><div class="gantt" style="grid-template-columns:'+L+'px repeat('+n+','+W+'px);width:'+(L+W*n)+'px">';
+  h+='<div class="lbl" style="height:34px"></div>';
+  for(const x of d.days)h+='<div class="hd'+(x.dow===6?' sat':x.dow===0?' sun':'')+(x.d===d.today?' today':'')+'">'+x.m+'/'+x.dd+'<br>'+'日月火水木金土'[x.dow]+'</div>';
+  d.props.forEach((p,ri)=>{h+='<div class="lbl" style="height:40px">'+esc(p)+'</div>';for(const x of d.days)h+='<div class="cell'+(x.d===d.today?' today':'')+'"></div>';
+    for(const b of d.bookings.filter(b=>b.prop===p)){let a=idx(b.arrival),z=idx(b.departure);const s0=Math.max(a,0),e0=Math.min(z,n);if(e0<=s0&&!(a===z))continue;
+      const left=L+s0*W+(a>=0?W*0.55:0),right=L+(z>=n?n*W:e0*W+W*0.45);const top=34+ri*40+6;
+      const reg=b.registry==='done'?'<span class="reg">✔</span>':b.registry==='missing'?'<span class="reg">✖</span>':'';
+      h+='<div class="bar '+b.chan+'" data-bk="'+b.id+'" style="left:'+left+'px;top:'+top+'px;width:'+Math.max(right-left,16)+'px" title="'+esc(b.name)+'">'+esc(b.name)+' '+b.pax+'名'+reg+'</div>';}
+  });
+  h+='</div></div></div>';
+  h+='<div class="nav"><button data-nav="today">今日に戻る</button></div>';
+  return h;
+}
+async function openDetail(id){
+  const sh=document.getElementById('sheet');sh.innerHTML='<div class="dim"></div><div class="sheet">読み込み中…</div>';
+  const d=await api({tab:'detail',bookingId:id});
+  if(d.error){sh.innerHTML='<div class="dim"></div><div class="sheet"><p class="red">'+esc(d.error)+'</p></div>';}
+  else{
+    const reg=d.registry==='done'?'<span class="green">済</span>':d.registry==='missing'?'<span class="red">未提出</span>':'<span class="muted">対象外</span>';
+    let h='<div class="dim"></div><div class="sheet"><h2>'+esc(d.prop)+'　'+esc(d.name)+'様</h2>';
+    h+='<div class="kv"><span>日付</span><span>'+esc(d.arrival)+' 〜 '+esc(d.departure)+'（'+d.nights+'泊）</span><span>人数</span><span>'+d.pax+'名</span><span>チャネル</span><span>'+esc(d.channel)+'</span><span>名簿</span><span>'+reg+'</span>'+(d.price?'<span>金額</span><span>'+yen(d.price)+'</span>':'')+(d.notes?'<span>メモ</span><span>'+esc(d.notes)+'</span>':'')+'</div>';
+    h+='<div class="acts">'+d.links.map(l=>'<a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a>').join('')+(d.registry==='missing'?'<button class="dark" data-remind="'+d.id+'" data-guest="'+esc(d.name)+'">名簿催促を送る</button>':'')+'<button data-close="1">閉じる</button></div>';
+    h+='<h3 style="font-size:13px;margin:10px 0 4px">直近のメッセージ</h3>'+(d.thread.length?d.thread.map(m=>'<div class="msg '+m.from+'">'+esc(m.text).slice(0,400)+'<small>'+(m.from==='guest'?'ゲスト':'スタッフ')+' '+esc((m.time||'').slice(5,16).replace('T',' '))+'</small></div>').join(''):'<p class="muted" style="font-size:12px">メッセージはありません</p>');
+    h+='<p class="muted" style="font-size:11px">返信はSORAの承認カード、または上のリンク先から行ってください。</p></div>';
+    sh.innerHTML=h;
+    sh.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
+  }
+  sh.querySelectorAll('.dim,[data-close]').forEach(x=>x.onclick=()=>{sh.innerHTML='';});
 }
 function renderWeek(d){
   let h='';
@@ -296,7 +402,7 @@ function renderSales(d){
   h+='<div class="nav"><button data-nav="today">今日に戻る</button></div>';
   return h;
 }
-document.getElementById('t-sales').onclick=()=>load('sales');
+document.getElementById('t-sales').onclick=()=>load('sales');document.getElementById('t-cal').onclick=()=>load('cal');
 (async()=>{try{await liff.init({liffId:LIFF_ID});if(!liff.isLoggedIn()){liff.login();return;}idToken=liff.getIDToken();
   const q=new URLSearchParams(location.search).get('tab')||'today';await load(q);}catch(e){document.getElementById('app').innerHTML='<p class="red">エラー: '+esc(e.message)+'</p>';}})();
 </script></body></html>`;
