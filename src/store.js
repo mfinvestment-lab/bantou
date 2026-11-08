@@ -79,6 +79,7 @@ export const faq = {
     await j.put(kv, `faq:${p}`, list);
     return removed;
   },
+  update: (kv, p, list) => j.put(kv, `faq:${p}`, list),
   // 「次から自動返信」フラグ
   async setAuto(kv, p, indexes1, on) {
     const list = await this.list(kv, p);

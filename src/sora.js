@@ -7,7 +7,7 @@ import { jobs } from "./jobs.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補を作る）→ FAQ採用 物件名 番号…\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -144,14 +144,39 @@ export async function handleSoraEvent(env, event) {
     if (cmd === "FAQ採用") {
       const p = await resolveProperty(env.KV, args[0]);
       const cands = p ? await faqCandidates.get(env.KV, p) : null;
-      if (!p || !cands) { await line.reply(event.replyToken, p ? `${p} のFAQ案がありません（3日で消えます）。先に「FAQ案 ${p}」を実行してください。` : "形式：FAQ採用 物件名 番号 [番号…]／全部"); return; }
+      if (!p || !cands) { await line.reply(event.replyToken, p ? `${p} のFAQ案がありません（3日で消えます）。先に「FAQ案 ${p}」を実行してください。` : "形式：FAQ採用 物件名 番号 [番号…]／全部\n文面を直して採用するなら：\nFAQ採用 物件名 番号（改行）直した回答\n（Q: … / A: … の形で質問も直せます）"); return; }
       const all = args.slice(1).includes("全部");
       const nums = all ? cands.map((_, i) => i + 1) : args.slice(1).map(Number).filter(n => n >= 1 && n <= cands.length);
       if (!nums.length) { await line.reply(event.replyToken, `番号を指定してください（1〜${cands.length}）。`); return; }
+      // 2行目以降があれば「編集して採用」（1件のみ）
+      const edit = restLines.join("\n").trim();
+      if (edit) {
+        if (nums.length !== 1) { await line.reply(event.replyToken, "文面を直して採用するときは番号を1つだけ指定してください。"); return; }
+        const c = cands[nums[0] - 1];
+        const q = (edit.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
+        const a = (edit.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim() || (!/^Q[:：]/.test(edit) ? edit : "");
+        if (!a) { await line.reply(event.replyToken, "回答（A:）が空です。"); return; }
+        const n = await faq.add(env.KV, p, q || c.q, a);
+        await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに追加しました（${n}件目・編集あり）\nQ: ${q || c.q}\nA: ${a}`)]);
+        return;
+      }
       const added = [], skipped = [];
       for (const n of nums) { const c = cands[n - 1]; if (!c.a) { skipped.push(n); continue; } await faq.add(env.KV, p, c.q, c.a); added.push(n); }
       const total = (await faq.list(env.KV, p)).length;
-      await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${added.length} 件追加しました（合計${total}件）${skipped.length ? `\n❓ 回答が無いため見送り：${skipped.join(", ")}` : ""}\n「FAQ一覧 ${p}」で確認。自動返信にするなら「FAQ自動 ${p} 番号」`)]);
+      await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${added.length} 件追加しました（合計${total}件）${skipped.length ? `\n❓ 回答が無いため見送り：${skipped.join(", ")}` : ""}\n「FAQ一覧 ${p}」で確認。文面を直すなら「FAQ修正 ${p} 番号（改行）新しい回答」、自動返信にするなら「FAQ自動 ${p} 番号」`)]);
+      return;
+    }
+    if (cmd === "FAQ修正") {
+      const p = await resolveProperty(env.KV, args[0]); const n = parseInt(args[1]);
+      const list = p ? await faq.list(env.KV, p) : [];
+      const body = restLines.join("\n").trim();
+      if (!p || !n || !list[n - 1] || !body) { await line.reply(event.replyToken, "形式：\nFAQ修正 物件名 番号\n新しい回答\n（Q: … / A: … の形で質問も直せます。番号は「FAQ一覧」で確認）"); return; }
+      const q = (body.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
+      const a = (body.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim() || (!/^Q[:：]/.test(body) ? body : "");
+      const f = list[n - 1];
+      if (q) f.q = q; if (a) f.a = a; f.editedAt = new Date().toISOString();
+      await faq.update(env.KV, p, list);
+      await line.replyRaw(event.replyToken, [withMenu(`✏️ ${p} のFAQ ${n} を更新しました\nQ: ${f.q}\nA: ${f.a}`)]);
       return;
     }
     if (cmd === "テスト") {
