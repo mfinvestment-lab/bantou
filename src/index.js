@@ -114,6 +114,13 @@ export default {
           }
           return json({ range: { from, to }, bookings: list.length, note: "remindSent=名簿催促が届いた予約数, keyDoneSent=名簿済の鍵案内が届いた数, welcomeWithKey=当日案内の本文に鍵番号が入っていた数", byProperty: out });
         }
+        if (path === "/admin/beds24-setup") {
+          // Beds24 → 設定 → アカウント → API で作った招待コードを渡すと、新しいリフレッシュトークンを KV に保存する（値は表示しない）
+          const code = url.searchParams.get("code");
+          if (!code) return json({ error: "code（招待コード）を指定してください" }, 400);
+          const { setupFromInviteCode } = await import("./beds24.js");
+          return json(await setupFromInviteCode(env, code));
+        }
         if (path === "/admin/line-quota") {
           // 今月の送信数（push/multicast/broadcast が対象。reply は無料で数えない）
           const q = async (token) => {

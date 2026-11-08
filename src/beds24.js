@@ -9,13 +9,27 @@ export const BEDS24_PROPERTIES = {
 // アクセストークンは KV に20分キャッシュ（Beds24のトークンは24時間有効。毎回取り直すと遅い）
 export async function getToken(env) {
   if (env.KV) { const t = await env.KV.get("beds24:token"); if (t) return t; }
+  // 招待コードから取り直したリフレッシュトークンが KV にあればそちらを優先（物件の追加時に Secrets を触らずに済む）
+  const refresh = (env.KV && await env.KV.get("beds24:refresh")) || env.BEDS24_REFRESH_TOKEN;
   const res = await fetch("https://beds24.com/api/v2/authentication/token", {
-    headers: { accept: "application/json", refreshToken: env.BEDS24_REFRESH_TOKEN }
+    headers: { accept: "application/json", refreshToken: refresh }
   });
   const data = await res.json();
   if (!res.ok || !data.token) throw new Error(`Beds24トークン取得エラー: ${JSON.stringify(data)}`);
   if (env.KV) await env.KV.put("beds24:token", data.token, { expirationTtl: 60 * 20 });
   return data.token;
+}
+
+/** 招待コード → リフレッシュトークンを取得して KV に保存（値は返さない）。物件を増やしたときに使う */
+export async function setupFromInviteCode(env, code) {
+  const res = await fetch("https://beds24.com/api/v2/authentication/setup", { headers: { accept: "application/json", code } });
+  const data = await res.json();
+  if (!res.ok || !data.refreshToken) throw new Error(`招待コードの交換に失敗: ${JSON.stringify(data).slice(0, 200)}`);
+  await env.KV.put("beds24:refresh", data.refreshToken);
+  await env.KV.delete("beds24:token");
+  await env.KV.delete("props:map");
+  const map = await fetchPropertyMap(data.token);
+  return { ok: true, properties: Object.values(map) };
 }
 
 export async function getBookings(token, query) {

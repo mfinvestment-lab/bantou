@@ -16,6 +16,9 @@ export function normalizeProperty(name) {
     "桜ハウス": "桜ハウス", "さくらハウス": "桜ハウス", "sakurahaus": "桜ハウス", "SAKURAHAUS": "桜ハウス",
     "nel": "nel.shizuoka", "ネル": "nel.shizuoka", "nel.shizuoka": "nel.shizuoka"
   };
+  // Beds24上の表記は "nel. shizuoka"（空白入り）。空白・記号を無視して照合する
+  const k = t.toLowerCase().replace(/[\s._\-・]/g, "");
+  if (k === "nelshizuoka") return "nel.shizuoka";
   return map[t] || map[t.toLowerCase()] || t;
 }
 
