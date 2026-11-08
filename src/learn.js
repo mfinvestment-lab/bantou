@@ -129,7 +129,7 @@ export async function suggestFaq(env, property, days = 180) {
   if (c.error) return c;
   if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
   const { system, user } = await buildFaqPrompt(env, property, c);
-  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 6000 });
+  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 8000 });
   if (!out.text) throw new Error(`Claudeの応答が空でした（stop=${out.stopReason}, blocks=${(out.types || []).join(",")}, in=${out.usage?.input_tokens}, out=${out.usage?.output_tokens}）`);
   const r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
   const candidates = (r.candidates || []).filter(x => x && x.q).map(x => ({ q: String(x.q).trim(), a: String(x.a || "").trim(), count: Number(x.count) || 1, needsAnswer: !!x.needsAnswer || !x.a, conflict: x.conflict || null }));

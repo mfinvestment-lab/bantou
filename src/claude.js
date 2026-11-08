@@ -2,23 +2,26 @@
 const API = "https://api.anthropic.com/v1/messages";
 export const MODELS = { fast: "claude-haiku-5-5", careful: "claude-sonnet-5-5" };
 
-export async function call(env, { model, system, messages, maxTokens = 1500 }) {
+export async function call(env, { model, system, messages, maxTokens = 1500, thinking = "off", _retry = 0 }) {
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    // system はキャッシュ対象（物件ルール・FAQ・学習例は毎回ほぼ同じ）
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages
+  };
+  // 既定で「考える」トークンをオフ（JSON出力だけが欲しいので、思考に出力枠を食われないように）
+  if (thinking === "off") body.thinking = { type: "disabled" };
   const res = await fetch(API, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      // system はキャッシュ対象（物件ルール・FAQ・学習例は毎回ほぼ同じ）
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-      messages
-    })
+    headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify(body)
   });
   const data = await res.json();
+  // thinking パラメータを受け付けないモデルなら外して1回だけやり直す
+  if (res.status === 400 && thinking === "off" && /thinking/i.test(JSON.stringify(data))) return call(env, { model, system, messages, maxTokens, thinking: "default", _retry });
+  // 一時的な拒否・混雑は少し待って最大2回やり直す
+  if ([403, 429, 500, 502, 503, 529].includes(res.status) && _retry < 2) { await new Promise(r => setTimeout(r, 4000 * (_retry + 1))); return call(env, { model, system, messages, maxTokens, thinking, _retry: _retry + 1 }); }
   // このAPIキーで使えないモデル（403）なら Haiku に切り替えて1回だけやり直す
   if (res.status === 403 && model !== MODELS.fast) { console.warn("Claude 403 → fallback to", MODELS.fast); return call(env, { model: MODELS.fast, system, messages, maxTokens }); }
   if (!res.ok) throw new Error(`Claude API エラー (${res.status}): ${JSON.stringify(data).slice(0, 300)}`);
