@@ -2,7 +2,7 @@
 const API = "https://api.anthropic.com/v1/messages";
 export const MODELS = { fast: "claude-haiku-5-5", careful: "claude-sonnet-5-5" };
 
-async function call(env, { model, system, messages, maxTokens = 800 }) {
+export async function call(env, { model, system, messages, maxTokens = 1500 }) {
   const res = await fetch(API, {
     method: "POST",
     headers: {
@@ -21,13 +21,19 @@ async function call(env, { model, system, messages, maxTokens = 800 }) {
   const data = await res.json();
   if (!res.ok) throw new Error(`Claude API エラー (${res.status}): ${JSON.stringify(data).slice(0, 300)}`);
   const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-  return { text, usage: data.usage };
+  return { text, usage: data.usage, stopReason: data.stop_reason };
 }
 
-function extractJson(text) {
+export function extractJson(text, { truncated = false } = {}) {
   const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error("JSONが見つかりません: " + text.slice(0, 200));
-  return JSON.parse(m[0]);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  // 途中で切れた出力の救済：文字列を閉じて "}" を足してみる
+  const start = text.indexOf("{");
+  if (start >= 0) {
+    const body = text.slice(start);
+    for (const tail of ['"}', '"]}', '}', ']}']) { try { return JSON.parse(body + tail); } catch {} }
+  }
+  throw new Error((truncated ? "出力が長すぎて途中で切れました: " : "JSONが見つかりません: ") + text.slice(0, 200));
 }
 
 /**
@@ -38,13 +44,21 @@ function extractJson(text) {
 export async function draftReply(env, ctx) {
   const system = buildSystem(ctx);
   const user = buildUser(ctx);
-  let out = await call(env, { model: MODELS.fast, system, messages: [{ role: "user", content: user }] });
-  let r = extractJson(out.text);
+  const msgs = [{ role: "user", content: user }];
+  let out = await call(env, { model: MODELS.fast, system, messages: msgs });
   let model = MODELS.fast;
+  let r;
+  try { r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" }); }
+  catch (e) {
+    // Haiku が壊れたJSONを返したら Sonnet で1回だけ作り直す
+    out = await call(env, { model: MODELS.careful, system, messages: msgs, maxTokens: 2000 });
+    r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
+    model = MODELS.careful;
+  }
   // Haiku が自信なしのときだけ Sonnet で作り直す
-  if (r.needsReply !== false && (r.confidence ?? 0) < 0.6 && !r.needsHuman) {
-    out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }] });
-    r = extractJson(out.text);
+  if (model === MODELS.fast && r.needsReply !== false && (r.confidence ?? 0) < 0.6 && !r.needsHuman) {
+    out = await call(env, { model: MODELS.careful, system, messages: msgs });
+    r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
     model = MODELS.careful;
   }
   return { ...r, model, usage: out.usage };
@@ -79,8 +93,8 @@ ${exText}
 - 例：「ご連絡ありがとうございます。ごゆっくりお過ごしください。」「承知しました。お待ちしております。」
 - ただし質問・要望・不満・トラブルが1つでも含まれていれば needsReply は true
 
-## 出力形式（JSONのみ、前後に文章を付けない）
-{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"usedFaq":[根拠にした登録FAQの番号。使っていなければ空配列],"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"日本語の返信本文"}`;
+## 出力形式（JSONのみ、前後に文章を付けない。reason は60字以内）
+{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"usedFaq":[根拠にした登録FAQの番号。使っていなければ空配列],"reply":"日本語の返信本文","reason":"根拠にしたFAQ/返信例の番号と判断理由（日本語・60字以内）"}`;
 }
 
 function buildUser({ booking, thread, guestMessage }) {

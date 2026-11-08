@@ -2,11 +2,11 @@
 import { sora, sourceIdOf } from "./line.js";
 import { rules, faq, examples, resolveProperty, listProperties, props, aliases, normalizeProperty } from "./store.js";
 import { getToken, fetchPropertyMap } from "./beds24.js";
-import { importHistory } from "./learn.js";
+import { importHistory, suggestFaq, faqCandidates } from "./learn.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補を作る）→ FAQ採用 物件名 番号…\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -132,6 +132,34 @@ export async function handleSoraEvent(env, event) {
       const r = await importHistory(env, p, days);
       console.log("importHistory", JSON.stringify(r));
       await line.pushMessages(sourceId, [withMenu(r.error ? `⚠️ ${r.error}` : `📚 ${r.property} 過去${r.days}日：予約${r.bookings}件・スレッド${r.threads}件から ${r.added} 組を学習例に追加（合計${r.total}件）\n「学習一覧 ${r.property}」で確認し、不要なものは「学習削除 ${r.property} 番号」で消してください。`)]);
+      return;
+    }
+    if (cmd === "FAQ案") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const days = Math.min(parseInt(args[1]) || 180, 365);
+      if (!p) { await line.reply(event.replyToken, "形式：FAQ案 物件名 [日数=180]\nBeds24の過去のやり取りから、FAQ候補（質問と回答案）を作ります。採用は「FAQ採用 物件名 番号…」"); return; }
+      await line.reply(event.replyToken, `${p} の過去${days}日分を読み込んでFAQ案を作っています…（2〜3分）`);
+      let r;
+      try { r = await suggestFaq(env, p, days); } catch (e) { r = { error: e.message.slice(0, 200) }; }
+      console.log("suggestFaq", JSON.stringify({ ...r, candidates: r.candidates?.length }));
+      if (r.error) { await line.pushMessages(sourceId, [withMenu(`⚠️ FAQ案の作成に失敗：${r.error}`)]); return; }
+      if (!r.candidates.length) { await line.pushMessages(sourceId, [withMenu(`${p}：過去${days}日（予約${r.bookings}件）に、FAQにできるやり取りが見つかりませんでした。`)]); return; }
+      const body = r.candidates.map((c, i) => `${i + 1}. ${c.needsAnswer ? "❓" : ""}Q: ${c.q}（${c.count}件）\n   A: ${c.a || "（返信例なし。回答を決めてください）"}${c.conflict ? `\n   ⚠️ 既存FAQ ${c.conflict} と食い違いあり` : ""}`).join("\n");
+      const msg = `💡 ${p} のFAQ案（過去${days}日・予約${r.bookings}件・やり取り${r.pairs}組）\n${body}\n\n採用：FAQ採用 ${p} 1 3 5（番号）／ FAQ採用 ${p} 全部\n❓は回答を決めてから「FAQ追加」で登録してください。`;
+      await line.pushMessages(sourceId, [withMenu(msg.slice(0, 4900))]);
+      return;
+    }
+    if (cmd === "FAQ採用") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const cands = p ? await faqCandidates.get(env.KV, p) : null;
+      if (!p || !cands) { await line.reply(event.replyToken, p ? `${p} のFAQ案がありません（3日で消えます）。先に「FAQ案 ${p}」を実行してください。` : "形式：FAQ採用 物件名 番号 [番号…]／全部"); return; }
+      const all = args.slice(1).includes("全部");
+      const nums = all ? cands.map((_, i) => i + 1) : args.slice(1).map(Number).filter(n => n >= 1 && n <= cands.length);
+      if (!nums.length) { await line.reply(event.replyToken, `番号を指定してください（1〜${cands.length}）。`); return; }
+      const added = [], skipped = [];
+      for (const n of nums) { const c = cands[n - 1]; if (!c.a) { skipped.push(n); continue; } await faq.add(env.KV, p, c.q, c.a); added.push(n); }
+      const total = (await faq.list(env.KV, p)).length;
+      await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${added.length} 件追加しました（合計${total}件）${skipped.length ? `\n❓ 回答が無いため見送り：${skipped.join(", ")}` : ""}\n「FAQ一覧 ${p}」で確認。自動返信にするなら「FAQ自動 ${p} 番号」`)]);
       return;
     }
     if (cmd === "テスト") {
