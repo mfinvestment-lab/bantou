@@ -105,7 +105,7 @@ export async function buildFaqPrompt(env, property, c) {
   const system = `あなたは日本の宿泊施設「${property}」の運営マネージャーです。過去のゲストとのやり取りから、FAQ（よくある質問と回答）の候補を作ります。
 
 ## ルール
-- 同じ趣旨の質問はひとつにまとめ、よく聞かれる順に最大10件
+- 同じ趣旨の質問はひとつにまとめ、よく聞かれる順に最大8件。A は120字以内
 - Q は一般化した日本語の質問文（固有名詞や日付を外す）。A はスタッフが実際に送った返信の内容に基づく日本語の回答（2〜4文、丁寧・簡潔）。スタッフが答えていない内容を創作しない
 - 鍵の暗証番号・Wi-Fiパスワード・返金/補償/値引きの可否・名簿の免除 に関する内容はFAQにしない（候補から除く）
 - 既存FAQと重複するものは出さない。既存FAQの回答が過去の返信と食い違う場合は "conflict" に既存FAQ番号を入れて指摘する
@@ -129,10 +129,25 @@ export async function suggestFaq(env, property, days = 180) {
   if (c.error) return c;
   if (!c.pairs.length && !c.unanswered.length) return { property, days, bookings: c.bookings, threads: c.threads, candidates: [] };
   const { system, user } = await buildFaqPrompt(env, property, c);
-  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 8000 });
+  const out = await call(env, { model: MODELS.careful, system, messages: [{ role: "user", content: user }], maxTokens: 16000 });
   if (!out.text) throw new Error(`Claudeの応答が空でした（stop=${out.stopReason}, blocks=${(out.types || []).join(",")}, in=${out.usage?.input_tokens}, out=${out.usage?.output_tokens}）`);
-  const r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" });
+  let r;
+  try { r = extractJson(out.text, { truncated: out.stopReason === "max_tokens" }); }
+  catch (e) {
+    // 途中で切れていても、完成している候補オブジェクトだけ拾う
+    const objs = [];
+    const t = out.text; let depth = 0, start = -1;
+    const arr = t.indexOf("[");
+    for (let i = arr + 1; i < t.length && arr >= 0; i++) {
+      const ch = t[i];
+      if (ch === "{") { if (depth === 0) start = i; depth++; }
+      else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { try { objs.push(JSON.parse(t.slice(start, i + 1))); } catch {} start = -1; } }
+    }
+    if (!objs.length) throw e;
+    console.warn("faq suggest: salvaged", objs.length, "candidates from truncated output", JSON.stringify(out.usage));
+    r = { candidates: objs, truncated: true };
+  }
   const candidates = (r.candidates || []).filter(x => x && x.q).map(x => ({ q: String(x.q).trim(), a: String(x.a || "").trim(), count: Number(x.count) || 1, needsAnswer: !!x.needsAnswer || !x.a, conflict: x.conflict || null }));
   await faqCandidates.set(env.KV, property, candidates);
-  return { property, days, bookings: c.bookings, threads: c.threads, pairs: c.pairs.length, unanswered: c.unanswered.length, candidates, usage: out.usage };
+  return { property, days, bookings: c.bookings, threads: c.threads, pairs: c.pairs.length, unanswered: c.unanswered.length, candidates, truncated: !!r.truncated, usage: out.usage };
 }

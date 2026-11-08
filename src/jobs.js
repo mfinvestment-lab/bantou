@@ -45,7 +45,7 @@ async function faqSuggestJob(env, { property: p, days }) {
   if (r.error) return `⚠️ FAQ案の作成に失敗：${r.error}`;
   if (!r.candidates.length) return `${p}：過去${days}日（予約${r.bookings}件）に、FAQにできるやり取りが見つかりませんでした。`;
   const body = r.candidates.map((c, i) => `${i + 1}. ${c.needsAnswer ? "❓" : ""}Q: ${c.q}（${c.count}件）\n   A: ${c.a || "（返信例なし。回答を決めてください）"}${c.conflict ? `\n   ⚠️ 既存FAQ ${c.conflict} と食い違いあり` : ""}`).join("\n");
-  return `💡 ${p} のFAQ案（過去${days}日・予約${r.bookings}件・やり取り${r.pairs}組）\n${body}\n\n採用：FAQ採用 ${p} 1 3 5（番号）／ FAQ採用 ${p} 全部\n❓は回答を決めてから「FAQ追加」で登録してください。`;
+  return `💡 ${p} のFAQ案（過去${days}日・予約${r.bookings}件・やり取り${r.pairs}組${r.truncated ? "・一部のみ" : ""}）\n${body}\n\n採用：FAQ採用 ${p} 1 3 5（番号）／ FAQ採用 ${p} 全部\n❓は回答を決めてから「FAQ追加」で登録してください。`;
 }
 
 async function importHistoryJob(env, { property: p, days }) {
