@@ -140,16 +140,15 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (cmd === "新着確認") {
-      // 処理に時間がかかると reply token が切れるので、先に返事をしてから push で結果を送る
-      await line.reply(event.replyToken, "確認中…");
+      // 結果は返事（reply）で返す＝送信数にカウントされない。処理が長引いて返事に失敗したときだけ push
       const r = await pollGuestMessages(env, { force: args[0] === "再" });
       const rs = r.results || [];
       const n = { card: rs.filter(x => x.cardId).length, auto: rs.filter(x => x.auto).length, skip: rs.filter(x => x.skipped).length, err: rs.filter(x => x.error).length };
       const lines = rs.map(x => x.cardId ? `📩 カード: ${x.category}` : x.auto ? `💬 ${x.auto}` : x.skipped ? `✔ ${x.skipped}` : `⚠️ ${x.error}`).slice(0, 10).join("\n");
-      await line.pushMessages(sourceId, [withMenu(`未読 ${r.checked ?? 0} 件（カード${n.card}・一言返し${n.auto}・不要${n.skip}${n.err ? `・エラー${n.err}` : ""}）${lines ? "\n" + lines : ""}`)]);
+      const msg = withMenu(`未読 ${r.checked ?? 0} 件（カード${n.card}・一言返し${n.auto}・不要${n.skip}${n.err ? `・エラー${n.err}` : ""}）${lines ? "\n" + lines : ""}`);
+      try { await line.replyRaw(event.replyToken, [msg]); } catch { await line.pushMessages(sourceId, [msg]); }
       return;
     }
-
     if (cmd === "FAQ追加") {
       const p = await resolveProperty(env.KV, args[0]);
       const body = restLines.join("\n");

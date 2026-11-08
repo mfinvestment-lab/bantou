@@ -41,6 +41,8 @@ LIFF_DASH_ID = "2012380270-R1EMblco"
 # ダッシュボードを見られる LINE userId（カンマ区切り。OWNER は常に可）／売上タブを見られる userId
 DASH_ALLOW = ""
 SALES_ALLOW = ""
+# 清掃終了のSORA通知: on / early（アーリーイン案内を送ったときだけ）/ off。LINE無料枠200通対策
+SORA_CLEAN_NOTIFY = "on"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）
