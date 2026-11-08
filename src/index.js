@@ -83,6 +83,36 @@ export default {
           const b = ((await r.json()).data || [])[0] || {};
           return json({ id: b.id, name: `${b.firstName || ""} ${b.lastName || ""}`, arrival: b.arrival, departure: b.departure, status: b.status, infoItems: b.infoItems });
         }
+        if (path === "/admin/autoaction-audit") {
+          // 過去N日の到着予約のスレッドを走査し、名簿催促・鍵案内・当日案内が実際に送られたかを物件別に集計
+          const { getToken, getBookings, fetchThread, fetchPropertyMap, formatDateYMD, addDays } = await import("./beds24.js");
+          const token = await getToken(env);
+          const days = Number(url.searchParams.get("days") || 30);
+          const from = formatDateYMD(addDays(new Date(), -days)), to = formatDateYMD(new Date());
+          const map = await fetchPropertyMap(token);
+          const list = (await getBookings(token, `arrivalFrom=${from}&arrivalTo=${to}&includeInfoItems=true`)).filter(b => b.status !== "cancelled");
+          const PAT = {
+            remind: /名簿のご登録が確認できていません|not yet received your guest registration/i,
+            keyDone: /全員分のご登録を確認|宿泊者名簿のご登録ありがとうございました|registration for all guests has been confirmed|thank you for completing the guest registration/i,
+            keyInWelcome: /キーボックス番号|キーボックスコード|キーボックス暗証番号|Key box code|key-box code/i,
+            welcome: /本日はチェックイン日|ご宿泊日ですね|check-in day/i
+          };
+          const out = {};
+          for (const b of list.slice(0, 120)) {
+            const prop = map[String(b.propertyId)] || String(b.propertyId);
+            const o = (out[prop] ||= { arrivals: 0, withRegistry: 0, registered: 0, remindSent: 0, keyDoneSent: 0, welcomeSent: 0, welcomeWithKey: 0, samples: [] });
+            o.arrivals++;
+            const codes = (b.infoItems || []).map(i => i.code);
+            const usesReg = codes.some(c => /GUESTLINK|GUESTREGISTRATIONID/.test(c)); if (usesReg) o.withRegistry++;
+            const done = codes.includes("GUESTDONE"); if (done) o.registered++;
+            let thread = []; try { thread = await fetchThread(token, b.id, days + 10); } catch {}
+            const host = thread.filter(t => t.source === "host").map(t => t.message || "");
+            const r = host.some(m => PAT.remind.test(m)), k = host.some(m => PAT.keyDone.test(m)), w = host.find(m => PAT.welcome.test(m));
+            if (r) o.remindSent++; if (k) o.keyDoneSent++; if (w) { o.welcomeSent++; if (PAT.keyInWelcome.test(w)) o.welcomeWithKey++; }
+            if (o.samples.length < 6) o.samples.push({ arrival: b.arrival, channel: b.channel || b.referer, registry: usesReg ? (done ? "済" : "未") : "対象外", remind: r, keyDone: k, welcomeWithKey: !!(w && PAT.keyInWelcome.test(w)) });
+          }
+          return json({ range: { from, to }, bookings: list.length, note: "remindSent=名簿催促が届いた予約数, keyDoneSent=名簿済の鍵案内が届いた数, welcomeWithKey=当日案内の本文に鍵番号が入っていた数", byProperty: out });
+        }
         if (path === "/admin/line-quota") {
           // 今月の送信数（push/multicast/broadcast が対象。reply は無料で数えない）
           const q = async (token) => {
