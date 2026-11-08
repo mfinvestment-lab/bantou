@@ -75,6 +75,14 @@ export const faq = {
     const removed = list.splice(index1 - 1, 1)[0];
     await j.put(kv, `faq:${p}`, list);
     return removed;
+  },
+  // 「次から自動返信」フラグ
+  async setAuto(kv, p, indexes1, on) {
+    const list = await this.list(kv, p);
+    let n = 0;
+    for (const i of indexes1) { if (list[i - 1]) { list[i - 1].auto = !!on; n++; } }
+    await j.put(kv, `faq:${p}`, list);
+    return n;
   }
 };
 

@@ -5,6 +5,9 @@ import { sora } from "./line.js";
 import { rules, faq, examples, cards, seen, props, normalizeProperty } from "./store.js";
 
 // 返信不要の定型（AIに渡す前に落としてトークンを節約）
+// Beds24のオートアクション等の定型文（名簿リンク・ハウスガイドURL・差し込みタグ・長文）は「人の返信」とみなさない
+const AUTO_HOST = /\{\{|\[GUEST|zoho|notion\.site|forms\.|guest-registration|宿泊者名簿|Guest Registration|チェックイン当日|check-in day|レビュー|review|Business Hours|営業時間/i;
+export const isAutoHostMessage = t => AUTO_HOST.test(t || "") || (t || "").length > 500;
 const NO_REPLY = /^(thank you|thanks|thx|ok|okay|great|perfect|got it|noted|ありがとう|ありがとうございます|了解|承知|わかりました|감사합니다|謝謝|谢谢|ขอบคุณ)[!.。！\s]*$/i;
 
 function channelName(b) {
@@ -58,8 +61,8 @@ async function handleGuestMessage(env, token, m) {
     .filter(t => t.id !== m.id)
     .sort((a, b) => String(a.time).localeCompare(String(b.time)));
 
-  // OTA側で既に返信済み（このメッセージより後にホストの発言がある）なら何もしない
-  if (rawThread.some(t => t.source === "host" && String(t.time) > String(m.time))) {
+  // OTA側で既に返信済み（このメッセージより後に「人の」ホスト発言がある）なら何もしない。自動送信の定型文は除く
+  if (rawThread.some(t => t.source === "host" && String(t.time) > String(m.time) && !isAutoHostMessage(t.message))) {
     await markMessageRead(token, m.id);
     return { id: m.id, skipped: "OTAで返信済み" };
   }
@@ -75,6 +78,20 @@ async function handleGuestMessage(env, token, m) {
     guestMessage: text
   };
   const draft = await draftReply(env, ctx);
+
+  // FAQ由来で「次から自動」に設定済みの質問なら、自信が高いときだけ自動送信（返金・鍵・法令は needsHuman なので対象外）
+  if (!draft.needsHuman && draft.needsReply !== false && draft.reply && (draft.confidence ?? 0) >= 0.8) {
+    const used = (draft.usedFaq || []).map(Number).filter(Boolean);
+    const autoFaq = ctx.faqs.map((f, i) => f.auto ? i + 1 : 0).filter(Boolean);
+    if (used.length && used.every(n => autoFaq.includes(n))) {
+      await sendGuestMessage(token, m.bookingId, draft.reply);
+      await markMessageRead(token, m.id);
+      await examples.add(env.KV, property, text, draft.reply, { channel: channelName(booking), auto: true });
+      const guest = `${booking?.firstName || ""} ${booking?.lastName || ""}`.trim() || "ゲスト";
+      if ((env.AUTO_FAQ_NOTIFY || "on") !== "off") { try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, `🤖 自動返信（FAQ${used.join(",")}）${property} ${guest}様\nQ: ${text.slice(0, 60)}\nA: ${draft.reply.slice(0, 120)}`); } catch {} }
+      return { id: m.id, auto: `FAQ自動返信: ${draft.reply.slice(0, 40)}`, category: draft.category, model: draft.model };
+    }
+  }
 
   // 一言返しで済むもの（お礼・到着報告など）。同じ予約には48時間に1回まで（ラリー防止）
   // AUTO_ACK=on なら自動送信、それ以外は「一言返し」カードを出して人が［送信］を押す
@@ -140,9 +157,12 @@ export function buildCardMessage(card) {
     action: { type: "postback", label, data: `card=${card.id}&action=${action}`, displayText: `${label}（${card.property} ${card.guest}様）` }
   });
   const row = (...btns) => ({ type: "box", layout: "horizontal", spacing: "sm", contents: btns });
+  const usedFaq = (d.usedFaq || []).map(Number).filter(Boolean);
   const buttons = d.needsHuman
     ? [row(postback("自分で書く", "write", "primary"), postback("対応済み", "done", "secondary"))]
-    : [postback("このまま送信", "approve", "primary"), row(postback("修正して送信", "edit", "secondary"), postback("自分で書く", "write", "secondary")), row(postback("対応済み", "done", "secondary"))];
+    : [postback("このまま送信", "approve", "primary"),
+       ...(usedFaq.length && !d.ack ? [postback(`承認して、次から自動（FAQ${usedFaq.join(",")}）`, "approveauto", "secondary")] : []),
+       row(postback("修正して送信", "edit", "secondary"), postback("自分で書く", "write", "secondary")), row(postback("対応済み", "done", "secondary"))];
 
   const header = { type: "box", layout: "horizontal", backgroundColor: headerBg, paddingAll: "12px", contents: [
     { type: "text", text: d.needsHuman ? "要確認（人が返信）" : "新着メッセージ", color: "#ffffff", weight: "bold", size: "sm", flex: 1 },
@@ -185,10 +205,16 @@ export async function handlePostback(env, event) {
   if (!card) { await line.reply(event.replyToken, "このカードは期限切れか、見つかりません。"); return; }
   if (card.status !== "pending") { await line.reply(event.replyToken, `このメッセージは対応済みです（${card.status}）。`); return; }
 
-  if (action === "approve") {
+  if (action === "approve" || action === "approveauto") {
     await cards.awaiting.clear(env.KV, userId);
     await sendAndRecord(env, card, card.draft.reply, { by: userId, how: "approve" });
-    await line.reply(event.replyToken, card.test ? `✅（テスト）送信扱いにしました` : `✅ 送信しました（${card.property} ${card.guest}様）`);
+    let extra = "";
+    if (action === "approveauto") {
+      const used = (card.draft.usedFaq || []).map(Number).filter(Boolean);
+      const n = await faq.setAuto(env.KV, card.property, used, true);
+      extra = n ? `\n🤖 FAQ ${used.join(",")} を「次から自動返信」にしました（${card.property}）。戻すには「FAQ自動解除 ${card.property} 番号」` : "";
+    }
+    await line.reply(event.replyToken, (card.test ? `✅（テスト）送信扱いにしました` : `✅ 送信しました（${card.property} ${card.guest}様）`) + extra);
     return;
   }
   if (action === "edit" || action === "write") {
@@ -217,7 +243,7 @@ export async function handleAwaitingText(env, event) {
   if (!cardId) return false;
   const text = event.message.text.trim();
   // コマンドらしい文は返信として扱わない（入力待ちは解除）
-  if (/^(テスト|FAQ|ルール|学習|過去学習|新着確認|物件一覧|別名|ヘルプ|メニュー|設定|今日|売上|ID教えて|ping)/i.test(text)) {
+  if (/^(テスト|FAQ|ルール|学習|過去学習|新着確認|物件一覧|別名|一斉送信|ヘルプ|メニュー|設定|今日|売上|ID教えて|ping)/i.test(text)) {
     await cards.awaiting.clear(env.KV, userId);
     return false;
   }

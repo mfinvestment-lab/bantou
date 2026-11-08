@@ -43,6 +43,8 @@ DASH_ALLOW = ""
 SALES_ALLOW = ""
 # 清掃終了のSORA通知: on / early（アーリーイン案内を送ったときだけ）/ off。LINE無料枠200通対策
 SORA_CLEAN_NOTIFY = "off"
+# FAQ自動返信したときのSORAへの1行通知: on / off
+AUTO_FAQ_NOTIFY = "on"
 
 # 必要な Secrets（wrangler secret put <NAME>）:
 #   HARU_CHANNEL_SECRET, HARU_CHANNEL_ACCESS_TOKEN   … 清掃用（旧デジタル番頭）

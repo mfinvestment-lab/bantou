@@ -52,7 +52,7 @@ export async function draftReply(env, ctx) {
 
 function buildSystem({ property, rules, faqs, examples }) {
   const faqText = (faqs || []).length
-    ? faqs.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}`).join("\n")
+    ? faqs.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}${f.auto ? "（自動返信可）" : ""}`).join("\n")
     : "（登録なし）";
   const exText = (examples || []).length
     ? examples.map((e, i) => `${i + 1}. ゲスト: ${e.q}\n   返信: ${e.a}`).join("\n")
@@ -80,7 +80,7 @@ ${exText}
 - ただし質問・要望・不満・トラブルが1つでも含まれていれば needsReply は true
 
 ## 出力形式（JSONのみ、前後に文章を付けない）
-{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"日本語の返信本文"}`;
+{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"usedFaq":[根拠にした登録FAQの番号。使っていなければ空配列],"reason":"根拠にしたルール/FAQ/返信例の番号と判断理由（日本語・1〜2文）","reply":"日本語の返信本文"}`;
 }
 
 function buildUser({ booking, thread, guestMessage }) {

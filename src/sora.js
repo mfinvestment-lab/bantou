@@ -6,7 +6,7 @@ import { importHistory } from "./learn.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -32,7 +32,11 @@ export async function handleSoraEvent(env, event) {
     await line.push(sourceId, "SORAです。このグループでゲスト対応の承認カードをお届けします。「ヘルプ」でコマンド一覧。");
     return;
   }
-  if (event.type === "postback") { await handlePostback(env, event); return; }
+  if (event.type === "postback") {
+    const pp = new URLSearchParams(event.postback.data || "");
+    if (pp.get("bcast")) { await handleBroadcastPostback(env, event, pp); return; }
+    await handlePostback(env, event); return;
+  }
   if (event.type !== "message" || event.message.type !== "text") return;
 
   // 修正・自分で書く の入力待ちなら、それを優先
@@ -47,7 +51,7 @@ export async function handleSoraEvent(env, event) {
     // FAQ追加の入力待ち
     if (env.KV && userId) {
       const p = await faqMode.get(env.KV, userId);
-      if (p && !/^(FAQ|ルール|学習|過去学習|新着|物件|別名|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
+      if (p && !/^(FAQ|ルール|学習|過去学習|新着|物件|別名|一斉送信|テスト|設定|ヘルプ|メニュー|ID|ping|キャンセル)/i.test(text)) {
         const q = (text.match(/Q[:：]\s*([\s\S]*?)(?=\nA[:：]|$)/) || [])[1]?.trim();
         const a = (text.match(/A[:：]\s*([\s\S]*)$/) || [])[1]?.trim();
         if (!q || !a) { await line.reply(event.replyToken, `${p} のFAQを追加します。次の形で送ってください：\nQ: 質問\nA: 答え\n\n「キャンセル」で中止`); return; }
@@ -162,7 +166,38 @@ export async function handleSoraEvent(env, event) {
     if (cmd === "FAQ一覧") {
       const p = await resolveProperty(env.KV, args[0]);
       const list = await faq.list(env.KV, p);
-      await line.reply(event.replyToken, list.length ? `📋 ${p} のFAQ（${list.length}件）\n` + list.map((f, i) => `${i + 1}. Q: ${f.q}\n   A: ${f.a}`).join("\n").slice(0, 4500) : `${p} のFAQはまだありません。`);
+      await line.reply(event.replyToken, list.length ? `📋 ${p} のFAQ（${list.length}件）\n` + list.map((f, i) => `${i + 1}. ${f.auto ? "🤖" : ""}Q: ${f.q}\n   A: ${f.a}`).join("\n").slice(0, 4500) : `${p} のFAQはまだありません。`);
+      return;
+    }
+    if (cmd === "FAQ自動" || cmd === "FAQ自動解除") {
+      const p = await resolveProperty(env.KV, args[0]); const nums = args.slice(1).map(Number).filter(Boolean);
+      if (!p || !nums.length) { await line.reply(event.replyToken, `形式：${cmd} 物件名 番号 [番号…]`); return; }
+      const n = await faq.setAuto(env.KV, p, nums, cmd === "FAQ自動");
+      await line.reply(event.replyToken, `${cmd === "FAQ自動" ? "🤖" : "✋"} ${p} のFAQ ${nums.join(",")} を${cmd === "FAQ自動" ? "自動返信に" : "承認制に戻"}しました（${n}件）`);
+      return;
+    }
+    if (cmd === "一斉送信") {
+      // 一斉送信 物件名（改行）文面 → 滞在中のゲスト全員に確認後に送る
+      const p = await resolveProperty(env.KV, args[0]); const body = [args.slice(1).join(" "), ...restLines].join("\n").trim();
+      if (!p || !body) { await line.reply(event.replyToken, "形式：\n一斉送信 物件名\n文面（日本語でOK・OTAが翻訳）\n滞在中（本日到着含む）のゲスト全員に送ります。送信前に確認が出ます。"); return; }
+      const { getToken, getBookings, BEDS24_PROPERTIES, formatDateYMD } = await import("./beds24.js");
+      const { props } = await import("./store.js");
+      const token = await getToken(env);
+      let pid = BEDS24_PROPERTIES[p]?.propId;
+      if (!pid) { const map = await props.get(env.KV); pid = map && Object.keys(map).find(id => normalizeProperty(map[id]) === p); }
+      if (!pid) { await line.reply(event.replyToken, `${p} のBeds24物件IDが分かりません。「物件一覧」で名前を確認してください。`); return; }
+      const today = formatDateYMD(new Date());
+      const guests = (await getBookings(token, `propertyId=${pid}&arrivalTo=${today}&departureFrom=${today}`)).filter(b => b.status !== "cancelled" && b.arrival <= today && b.departure > today);
+      if (!guests.length) { await line.reply(event.replyToken, `${p} に本日滞在中のゲストはいません。`); return; }
+      const id = `bc${Date.now()}`;
+      await env.KV.put(`bcast:${id}`, JSON.stringify({ property: p, body, bookings: guests.map(b => ({ id: b.id, name: `${b.firstName || ""} ${b.lastName || ""}`.trim() })) }), { expirationTtl: 1800 });
+      await line.replyRaw(event.replyToken, [{ type: "flex", altText: "一斉送信の確認", contents: { type: "bubble", size: "mega",
+        header: { type: "box", layout: "vertical", backgroundColor: "#c0392b", paddingAll: "12px", contents: [{ type: "text", text: `一斉送信の確認：${p} ${guests.length}名`, color: "#ffffff", weight: "bold" }] },
+        body: { type: "box", layout: "vertical", spacing: "sm", contents: [{ type: "text", text: guests.map(b => `・${`${b.firstName || ""} ${b.lastName || ""}`.trim()}（${b.arrival}〜${b.departure}）`).join("\n"), size: "xs", color: "#6b6b6b", wrap: true }, { type: "separator" }, { type: "text", text: body, size: "sm", wrap: true }] },
+        footer: { type: "box", layout: "horizontal", spacing: "sm", contents: [
+          { type: "button", style: "primary", color: "#c0392b", height: "sm", action: { type: "postback", label: `${guests.length}名に送信`, data: `bcast=${id}&action=send`, displayText: "一斉送信を実行" } },
+          { type: "button", style: "secondary", height: "sm", action: { type: "postback", label: "やめる", data: `bcast=${id}&action=cancel`, displayText: "一斉送信を中止" } }
+        ] } } }]);
       return;
     }
     if (cmd === "FAQ削除") {
