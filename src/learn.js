@@ -30,9 +30,13 @@ async function collectPairs(env, property, days, { maxBookings = MAX_BOOKINGS } 
   const pairs = [];
   const unanswered = [];
   let threads = 0;
-  for (const b of bookings) {
-    let thread;
-    try { thread = await fetchThread(token, b.id, days + 30); } catch { continue; }
+  const threadsOf = [];
+  for (let i = 0; i < bookings.length; i += 6) {
+    const chunk = bookings.slice(i, i + 6);
+    const rs = await Promise.all(chunk.map(b => fetchThread(token, b.id, days + 30).then(t => ({ b, t })).catch(() => null)));
+    for (const r of rs) if (r) threadsOf.push(r);
+  }
+  for (const { b, t: thread } of threadsOf) {
     threads++;
     const msgs = (thread || [])
       .map(t => ({ src: t.source === "guest" ? "guest" : "host", text: String(t.message || "").trim(), t: Date.parse(t.time) || 0 }))

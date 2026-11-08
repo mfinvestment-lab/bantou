@@ -114,6 +114,10 @@ export default {
           }
           return json({ range: { from, to }, bookings: list.length, note: "remindSent=名簿催促が届いた予約数, keyDoneSent=名簿済の鍵案内が届いた数, welcomeWithKey=当日案内の本文に鍵番号が入っていた数", byProperty: out });
         }
+        if (path === "/admin/run-jobs") {
+          const { runJobs } = await import("./jobs.js");
+          return json(await runJobs(env));
+        }
         if (path === "/admin/beds24-setup") {
           // Beds24 → 設定 → アカウント → API で作った招待コードを渡すと、新しいリフレッシュトークンを KV に保存する（値は表示しない）
           const code = url.searchParams.get("code");
@@ -223,6 +227,7 @@ export default {
       ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
+      ctx.waitUntil(import("./jobs.js").then(m => m.runJobs(env)).then(r => { if (r.ran) console.log("jobs", JSON.stringify(r)); }).catch(e => console.error("jobs error", e.message)));
       ctx.waitUntil(
         pollGuestMessages(env)
           .then(r => { if (r.checked) console.log("メッセージ確認:", JSON.stringify(r)); })
