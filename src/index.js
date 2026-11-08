@@ -114,6 +114,20 @@ export default {
           }
           return json({ range: { from, to }, bookings: list.length, note: "remindSent=名簿催促が届いた予約数, keyDoneSent=名簿済の鍵案内が届いた数, welcomeWithKey=当日案内の本文に鍵番号が入っていた数", byProperty: out });
         }
+        if (path === "/admin/claude-test") {
+          // Claude API の切り分け：size=small|medium|large, max=出力上限, model=fast|careful
+          const { MODELS } = await import("./claude.js");
+          const size = url.searchParams.get("size") || "small";
+          const max = parseInt(url.searchParams.get("max")) || 1000;
+          const model = url.searchParams.get("model") === "careful" ? MODELS.careful : MODELS.fast;
+          const filler = "ゲスト: 駐車場はありますか？\n返信: 敷地内に駐車場はありません。近くのコインパーキングをご利用ください。\n";
+          const n = size === "large" ? 400 : size === "medium" ? 120 : 3;
+          const system = "あなたは宿泊施設のスタッフです。次のやり取りからFAQ候補を3件、JSONで出してください。\n" + filler.repeat(n);
+          const body = { model, max_tokens: max, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], messages: [{ role: "user", content: "{\"candidates\":[...]} の形で出力してください。" }] };
+          const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
+          const data = await res.json();
+          return json({ model, max, size, systemChars: system.length, status: res.status, stop: data.stop_reason, usage: data.usage, blocks: (data.content || []).map(c => c.type), textHead: (data.content || []).filter(c => c.type === "text").map(c => c.text).join("").slice(0, 200), error: data.error || null });
+        }
         if (path === "/admin/run-jobs") {
           const { runJobs } = await import("./jobs.js");
           return json(await runJobs(env));
