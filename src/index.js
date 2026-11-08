@@ -94,7 +94,8 @@ export default {
           const PAT = {
             remind: /名簿のご登録が確認できていません|not yet received your guest registration/i,
             keyDone: /全員分のご登録を確認|宿泊者名簿のご登録ありがとうございました|registration for all guests has been confirmed|thank you for completing the guest registration/i,
-            keyInWelcome: /キーボックス番号|キーボックスコード|キーボックス暗証番号|Key box code|key-box code/i,
+            // 「番号は別メッセージで送ります」のような文を拾わないよう、ラベル直後に実際の数字があるときだけ鍵入りとみなす
+            keyInWelcome: /(キーボックス(の)?(番号|コード|暗証番号)|key[- ]?box code|키박스 번호)\s*[:：]\s*\d{3,}/i,
             welcome: /本日はチェックイン日|ご宿泊日ですね|check-in day/i
           };
           const out = {};
