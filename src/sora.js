@@ -1,6 +1,6 @@
 // SORA（管理用）: 承認カードのボタン処理と、FAQ・ルール・学習例の登録コマンド
 import { sora, sourceIdOf } from "./line.js";
-import { rules, faq, examples, resolveProperty, listProperties, props, aliases } from "./store.js";
+import { rules, faq, examples, resolveProperty, listProperties, props, aliases, normalizeProperty } from "./store.js";
 import { getToken, fetchPropertyMap } from "./beds24.js";
 import { importHistory } from "./learn.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
@@ -181,7 +181,6 @@ export async function handleSoraEvent(env, event) {
       const p = await resolveProperty(env.KV, args[0]); const body = [args.slice(1).join(" "), ...restLines].join("\n").trim();
       if (!p || !body) { await line.reply(event.replyToken, "形式：\n一斉送信 物件名\n文面（日本語でOK・OTAが翻訳）\n滞在中（本日到着含む）のゲスト全員に送ります。送信前に確認が出ます。"); return; }
       const { getToken, getBookings, BEDS24_PROPERTIES, formatDateYMD } = await import("./beds24.js");
-      const { props } = await import("./store.js");
       const token = await getToken(env);
       let pid = BEDS24_PROPERTIES[p]?.propId;
       if (!pid) { const map = await props.get(env.KV); pid = map && Object.keys(map).find(id => normalizeProperty(map[id]) === p); }
