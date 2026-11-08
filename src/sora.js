@@ -133,6 +133,27 @@ export async function handleSoraEvent(env, event) {
       await line.reply(event.replyToken, `${p} の過去${days}日分を取り込みます。5分以内に結果をお送りします。`);
       return;
     }
+    if (cmd === "FAQ案") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const days = Math.min(parseInt(args[1]) || 180, 365);
+      if (!p) { await line.reply(event.replyToken, "形式：FAQ案 物件名 [日数=180]\nBeds24の過去のやり取りから、FAQ候補（質問と回答案）を作ります。採用は「FAQ採用 物件名 番号…」"); return; }
+      await jobs.add(env.KV, { type: "faq-suggest", property: p, days, to: sourceId });
+      await line.reply(event.replyToken, `${p} の過去${days}日分からFAQ案を作ります。5分以内に結果をお送りします。`);
+      return;
+    }
+    if (cmd === "FAQ採用") {
+      const p = await resolveProperty(env.KV, args[0]);
+      const cands = p ? await faqCandidates.get(env.KV, p) : null;
+      if (!p || !cands) { await line.reply(event.replyToken, p ? `${p} のFAQ案がありません（3日で消えます）。先に「FAQ案 ${p}」を実行してください。` : "形式：FAQ採用 物件名 番号 [番号…]／全部"); return; }
+      const all = args.slice(1).includes("全部");
+      const nums = all ? cands.map((_, i) => i + 1) : args.slice(1).map(Number).filter(n => n >= 1 && n <= cands.length);
+      if (!nums.length) { await line.reply(event.replyToken, `番号を指定してください（1〜${cands.length}）。`); return; }
+      const added = [], skipped = [];
+      for (const n of nums) { const c = cands[n - 1]; if (!c.a) { skipped.push(n); continue; } await faq.add(env.KV, p, c.q, c.a); added.push(n); }
+      const total = (await faq.list(env.KV, p)).length;
+      await line.replyRaw(event.replyToken, [withMenu(`✅ ${p} のFAQに ${added.length} 件追加しました（合計${total}件）${skipped.length ? `\n❓ 回答が無いため見送り：${skipped.join(", ")}` : ""}\n「FAQ一覧 ${p}」で確認。自動返信にするなら「FAQ自動 ${p} 番号」`)]);
+      return;
+    }
     if (cmd === "テスト") {
       const p = await resolveProperty(env.KV, args[0]);
       const q = [args.slice(1).join(" "), ...restLines].join("\n").trim();
