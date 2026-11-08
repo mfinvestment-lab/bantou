@@ -160,7 +160,7 @@ export async function calendarData(env, start, days = 28) {
   const list = (await getBookings(token, `arrivalTo=${end}&departureFrom=${start}&includeInfoItems=true`)).filter(b => b.status !== "cancelled" && b.arrival && b.departure);
   const dayList = [];
   for (let i = 0; i < days; i++) { const d = formatDateYMD(addDays(new Date(Date.parse(start + "T00:00:00Z")), i)); const [y, m, dd] = d.split("-").map(Number); dayList.push({ d, m, dd, dow: new Date(Date.UTC(y, m - 1, dd)).getUTCDay() }); }
-  const chan = b => { const c = String(b.channel || b.referer || "").toLowerCase(); return /airbnb/.test(c) ? "airbnb" : /booking/.test(c) ? "booking" : /agoda/.test(c) ? "agoda" : /expedia/.test(c) ? "expedia" : "direct"; };
+  const chan = b => { const c = String(b.channel || b.referer || "").toLowerCase(); return /airbnb/.test(c) ? "airbnb" : /booking|agoda|expedia/.test(c) ? "booking" : "direct"; };
   const bookings = list.map(b => ({ ...fmtBooking(b), prop: disp(names[String(b.propertyId)] || String(b.propertyId)), chan: chan(b) }));
   return { start, end, days: dayList, today: formatDateYMD(new Date()), props: order.map(id => disp(names[id])), bookings };
 }
@@ -289,7 +289,7 @@ td:first-child,th:first-child{text-align:left}
 .gantt .cell{border-bottom:1px solid #eee;border-left:1px solid #f3f3f3;height:40px}
 .gantt .cell.today{background:#fffbe6}
 .bar{position:absolute;height:28px;border-radius:6px;color:#fff;font-size:11px;line-height:28px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;cursor:pointer}
-.bar.airbnb{background:#e0455f}.bar.booking{background:#2a5bd7}.bar.agoda{background:#8e44ad}.bar.expedia{background:#f0a202}.bar.direct{background:#7f8c8d}
+.bar.airbnb{background:#e0455f}.bar.booking{background:#2a5bd7}.bar.direct{background:#7f8c8d}
 .bar .reg{position:absolute;right:4px;top:0;font-size:12px}
 .sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.2);max-height:85vh;overflow:auto;padding:14px 16px 24px;z-index:10;max-width:560px;margin:0 auto}
 .dim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9}
@@ -356,7 +356,7 @@ function renderCal(d){
   const prev=new Date(t0-7*86400000).toISOString().slice(0,10),next=new Date(t0+7*86400000).toISOString().slice(0,10),today=new Date(Date.parse(d.today+'T00:00:00Z')-2*86400000).toISOString().slice(0,10);
   const e=d.days[n-1];
   let h='<div class="calwrap"><div class="calbar"><button data-cal="'+prev+'">◀</button><span><b>'+d.days[0].m+'/'+d.days[0].dd+'〜'+e.m+'/'+e.dd+'</b></span><span><button data-cal="'+today+'" style="margin-right:6px">今日</button><button data-cal="'+next+'">▶</button></span></div>';
-  h+='<div class="legend"><span><i style="background:#e0455f"></i>Airbnb</span><span><i style="background:#2a5bd7"></i>Booking</span><span><i style="background:#8e44ad"></i>Agoda</span><span><i style="background:#7f8c8d"></i>直・他</span><span>✔名簿済 ✖未</span></div>';
+  h+='<div class="legend"><span><i style="background:#e0455f"></i>Airbnb</span><span><i style="background:#2a5bd7"></i>Booking</span><span><i style="background:#7f8c8d"></i>直・他</span><span>✔名簿済 ✖未</span></div>';
   h+='<div class="scroll"><div class="gantt" style="grid-template-columns:'+L+'px repeat('+n+','+W+'px);width:'+(L+W*n)+'px">';
   h+='<div class="lbl" style="height:34px"></div>';
   for(const x of d.days)h+='<div class="hd'+(x.dow===6?' sat':x.dow===0?' sun':'')+(x.d===d.today?' today':'')+'">'+x.m+'/'+x.dd+'<br>'+'日月火水木金土'[x.dow]+'</div>';
