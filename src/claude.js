@@ -19,6 +19,8 @@ export async function call(env, { model, system, messages, maxTokens = 1500 }) {
     })
   });
   const data = await res.json();
+  // このAPIキーで使えないモデル（403）なら Haiku に切り替えて1回だけやり直す
+  if (res.status === 403 && model !== MODELS.fast) { console.warn("Claude 403 → fallback to", MODELS.fast); return call(env, { model: MODELS.fast, system, messages, maxTokens }); }
   if (!res.ok) throw new Error(`Claude API エラー (${res.status}): ${JSON.stringify(data).slice(0, 300)}`);
   const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
   return { text, usage: data.usage, stopReason: data.stop_reason };
