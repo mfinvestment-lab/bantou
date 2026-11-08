@@ -7,7 +7,7 @@ import { jobs } from "./jobs.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 ／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 番号…（2-7 も可）／ 学習削除 物件名 番号";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -258,11 +258,15 @@ export async function handleSoraEvent(env, event) {
         ] } } }]);
       return;
     }
-    if (cmd === "FAQ削除") {
-      const p = await resolveProperty(env.KV, args[0]); const n = parseInt(args[1]);
-      if (!p || !n) { await line.reply(event.replyToken, "形式：FAQ削除 物件名 番号"); return; }
-      const r = await faq.remove(env.KV, p, n);
-      await line.reply(event.replyToken, r ? `🗑 削除しました\nQ: ${r.q}` : "その番号はありません。");
+    if (cmd === "FAQ削除" || cmd === "削除") {
+      const p = await resolveProperty(env.KV, args[0]);
+      // 「2 3 4」「2-7」「2,3,4」いずれも可
+      const nums = [...new Set(args.slice(1).join(" ").split(/[\s,、]+/).flatMap(t => { const r = t.match(/^(\d+)-(\d+)$/); if (r) { const a = +r[1], b = +r[2]; return Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i); } return t ? [parseInt(t)] : []; }).filter(n => n > 0))].sort((a, b) => b - a);
+      if (!p || !nums.length) { await line.reply(event.replyToken, "形式：FAQ削除 物件名 番号 [番号…]（例：FAQ削除 桜ハウス 2 3 4 ／ FAQ削除 桜ハウス 2-7）"); return; }
+      const removed = [];
+      for (const n of nums) { const r = await faq.remove(env.KV, p, n); if (r) removed.push(`${n}. ${r.q}`); } // 大きい番号から消すので番号がずれない
+      const total = (await faq.list(env.KV, p)).length;
+      await line.reply(event.replyToken, removed.length ? `🗑 ${removed.length}件削除しました（残り${total}件）\n${removed.reverse().join("\n")}\n\n番号は詰まるので「FAQ一覧 ${p}」で確認してください。` : "その番号はありません。");
       return;
     }
     if (cmd === "ルール設定" || cmd === "ルール上書き") {
