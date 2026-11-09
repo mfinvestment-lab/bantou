@@ -313,8 +313,8 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .grid.h{font-size:12px;color:#6b6b6b;padding:6px 14px}
 .grid span:first-child{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .foot{background:#fff;border-radius:10px;padding:10px 14px;font-size:12px;color:#6b6b6b;display:flex;justify-content:space-between;gap:8px}
-.nav{display:flex;gap:8px}
-.nav button{flex:1;min-height:44px;border:1px solid #1a1a1a;background:#fff;border-radius:8px;font-size:13px;font-weight:700}
+.nav{display:flex;gap:6px}
+.nav button{flex:1;min-height:40px;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:14px;font-weight:700;color:var(--ink)}
 .nav button.on{background:var(--red);border-color:var(--red);color:#fff}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:6px 4px;border-bottom:1px solid #eee;text-align:right}
@@ -367,7 +367,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 async function api(body){const r=await fetch('/liff/dash/data',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,...body})});return r.json();}
 async function load(tab,force){
   cur=tab;const app=document.getElementById('app');app.textContent='読み込み中…';
-  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab||(b.dataset.tab==='today'&&(tab==='tomorrow'||tab==='week'))));
   app.classList.toggle('kpiwrap',KPI_TABS.includes(tab));
   let d;
   if(KPI_TABS.includes(tab)){ if(!kpiCache||force){kpiCache=await api({tab:'kpi',force:!!force});} d=kpiCache; }
@@ -460,7 +460,8 @@ function renderPace(d){
   h+='</table></div><p class="note">PriceLabsの変更履歴の自動取り込みは接続後に追加。</p>';
   return h;}
 function renderDay(d,tab){
-  const k=d.kpi;let h='<div class="kpi" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div></div>';
+  const k=d.kpi;let h='<div class="nav"><button data-nav="today" class="'+(tab==='today'?'on':'')+'">今日</button><button data-nav="tomorrow" class="'+(tab==='tomorrow'?'on':'')+'">明日</button><button data-nav="week">今週</button></div>';
+  h+='<div class="kpi" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div></div>';
   h+='<div class="card" id="todo"><h3>要対応'+(d.todo.length?'':'　<span class="muted">なし</span>')+'</h3>';
   for(const t of d.todo){
     if(t.kind==='registry')h+='<div class="row"><div><b>'+esc(t.property)+' '+esc(t.guest)+'様</b><span class="red">'+esc(t.text)+'</span></div><button class="btn" data-remind="'+t.bookingId+'" data-guest="'+esc(t.guest)+'">再催促</button></div>';
@@ -475,7 +476,6 @@ function renderDay(d,tab){
   h+='</div>';
   const tt=d.timetree;
   h+='<div class="foot"><span>TimeTree同期　'+(tt?esc((tt.at||'').replace(/^\\d+\\/\\d+\\/\\d+\\s*/,''))+(tt.ok?' 成功':' 失敗'):'未実行')+'</span><span>Beds24　'+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})+' 取得</span></div>';
-  h+='<div class="nav"><button data-nav="today" class="'+(tab==='today'?'on':'')+'">今日</button><button data-nav="tomorrow" class="'+(tab==='tomorrow'?'on':'')+'">明日</button><button data-nav="week">今週</button><button data-nav="cal">カレンダー</button></div>';
   return h;
 }
 function renderCounters(k){
@@ -519,9 +519,8 @@ async function openDetail(id){
   sh.querySelectorAll('.dim,[data-close]').forEach(x=>x.onclick=()=>{sh.innerHTML='';});
 }
 function renderWeek(d){
-  let h='';
+  let h='<div class="nav"><button data-nav="today">今日</button><button data-nav="tomorrow">明日</button><button data-nav="week" class="on">今週</button></div>';
   for(const day of d.days){h+='<div class="card"><h3>'+esc(day.label)+'</h3>'+(day.props.length?day.props.map(p=>'<div class="row"><b>'+esc(p.property)+'</b><span>'+(p.out?'<span class="muted">OUT</span> ':'')+(p.in?'IN '+esc(p.in):'')+'</span></div>').join(''):'<div class="row muted">動きなし</div>')+'</div>';}
-  h+='<div class="nav"><button data-nav="today">今日</button><button data-nav="tomorrow">明日</button><button data-nav="week" class="on">今週</button></div>';
   return h;
 }
 function renderSales(d){
