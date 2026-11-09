@@ -256,7 +256,7 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:22px;font-weight:800;padding:0 2px}
 .hdr .tabs{display:flex;gap:2px;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px}
 .hdr .tabs::-webkit-scrollbar{display:none}
-.hdr .tabs button{flex:1 1 0;min-width:0;border:0;background:transparent;border-radius:9px;padding:9px 2px;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr .tabs button{flex:1 1 0;min-width:0;border:0;background:transparent;border-radius:9px;padding:9px 0;font-size:12.5px;letter-spacing:-.02em;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdr .tabs button.on{background:var(--red);color:#fff}
 #refresh{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px}
 .sec{font-size:12px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:10px 0 -8px 2px}
@@ -279,8 +279,8 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .tbl .cur td{background:#eef3f8}
 .seg{display:flex;flex-direction:column;gap:8px;margin:4px 0}.seg button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px 10px;font-size:15px;font-weight:700;text-align:left;color:var(--ink)}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
 .kt{max-height:calc(100vh - 215px);overflow:auto}.kt thead th{position:sticky;top:0;z-index:3;background:#f6f8fa}.kt thead th.pc,.kt thead th.mc{z-index:4}.kt table{font-size:15px}.kt th,.kt td{padding:12px 10px;white-space:nowrap}.kt td{font-weight:700;line-height:1.3}.kt td .s{font-size:13px;font-weight:600;margin-top:2px}.kt th .s{font-size:12px}
-.kt .pc{position:sticky;left:0;background:#fff;z-index:2;width:104px;min-width:104px;max-width:104px;box-sizing:border-box;white-space:normal;font-weight:800;border-right:1px solid var(--line)}.kt .pc small{display:block;font-weight:400;color:var(--mut);font-size:12px;margin-top:2px}
-.kt .mc{position:sticky;left:104px !important;background:#fff;z-index:2;color:var(--ink);font-weight:700;text-align:left;border-right:1px solid var(--line);min-width:72px}
+.kt .pc{position:sticky;left:0;background:#fff;z-index:2;width:84px;min-width:84px;max-width:84px;box-sizing:border-box;white-space:normal;word-break:break-all;font-weight:800;font-size:13px;line-height:1.25;padding:10px 6px !important;border-right:1px solid var(--line)}.kt .pc small{display:block;font-weight:400;color:var(--mut);font-size:12px;margin-top:2px}
+.kt .mc{position:sticky;left:84px !important;background:#fff;z-index:2;color:var(--ink);font-weight:700;font-size:13px;text-align:left;border-right:1px solid var(--line);width:62px;min-width:62px;max-width:62px;box-sizing:border-box;padding:10px 6px !important}
 .kt tr.grp td{border-top:2px solid var(--line)}.kt tr.tot .pc,.kt tr.tot .mc{background:#f9fafb}.kt th.pc,.kt th.mc{background:#f6f8fa;z-index:3}.kt th.curcol,.kt td.curcol{background:#eef3f8}
 .rank{display:inline-block;width:26px;height:26px;line-height:26px;border-radius:6px;color:#fff;font-weight:800;text-align:center;font-size:14px}
 .rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:#c0392b}
@@ -380,7 +380,7 @@ async function load(tab,force){
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){axisLock(app.querySelector('.scroll'));app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
-  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});axisLock(app.querySelector('.kt'));const go=()=>{const sc=app.querySelector('.kt');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.getBoundingClientRect().left-sc.getBoundingClientRect().left+sc.scrollLeft-180);};setTimeout(go,30);setTimeout(go,400);}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});axisLock(app.querySelector('.kt'));const go=()=>{const sc=app.querySelector('.kt');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.getBoundingClientRect().left-sc.getBoundingClientRect().left+sc.scrollLeft-150);};setTimeout(go,30);setTimeout(go,400);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
