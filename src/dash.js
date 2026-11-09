@@ -250,9 +250,9 @@ const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta n
 :root{--red:#2a4d69;--ink:#1a1a1a;--mut:#6b6b6b;--bg:#f3f5f7;--line:#dfe4ea;--acc2:#9fb3c8}
 body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
 .hdr{background:var(--bg);padding:10px 12px 8px;position:sticky;top:0;z-index:5}
-.hdr .brand{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mut);padding:0 2px 6px}
-.hdr .brand b{font-size:15px;color:var(--red);letter-spacing:.02em;margin-right:6px}
-.hdr .brand .upd{font-size:11px;text-align:right}
+.hdr .brand{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mut);padding:0 2px 4px;white-space:nowrap}
+.hdr .brand b{font-size:15px;color:var(--red);letter-spacing:.02em}
+.hdr .brand .upd{font-size:11px;overflow:hidden;text-overflow:ellipsis}
 .hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:22px;font-weight:800;padding:0 2px}
 .hdr .tabs{display:flex;gap:4px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px}
 .hdr .tabs::-webkit-scrollbar{display:none}
@@ -278,7 +278,7 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .tbl tr.tot td{background:#f9fafb;font-weight:700}
 .tbl .cur td{background:#eef3f8}
 .seg{display:flex;flex-direction:column;gap:8px;margin:4px 0}.seg button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px 10px;font-size:15px;font-weight:700;text-align:left;color:var(--ink)}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
-.kt table{font-size:15px}.kt th,.kt td{padding:12px 10px;white-space:nowrap}.kt td{font-weight:700;line-height:1.3}.kt td .s{font-size:13px;font-weight:600;margin-top:2px}.kt th .s{font-size:12px}
+.kt{max-height:calc(100vh - 215px);overflow:auto}.kt thead th{position:sticky;top:0;z-index:3;background:#f6f8fa}.kt thead th.pc,.kt thead th.mc{z-index:4}.kt table{font-size:15px}.kt th,.kt td{padding:12px 10px;white-space:nowrap}.kt td{font-weight:700;line-height:1.3}.kt td .s{font-size:13px;font-weight:600;margin-top:2px}.kt th .s{font-size:12px}
 .kt .pc{position:sticky;left:0;background:#fff;z-index:2;width:104px;min-width:104px;max-width:104px;box-sizing:border-box;white-space:normal;font-weight:800;border-right:1px solid var(--line)}.kt .pc small{display:block;font-weight:400;color:var(--mut);font-size:12px;margin-top:2px}
 .kt .mc{position:sticky;left:104px !important;background:#fff;z-index:2;color:var(--ink);font-weight:700;text-align:left;border-right:1px solid var(--line);min-width:72px}
 .kt tr.grp td{border-top:2px solid var(--line)}.kt tr.tot .pc,.kt tr.tot .mc{background:#f9fafb}.kt th.pc,.kt th.mc{background:#f6f8fa;z-index:3}.kt th.curcol,.kt td.curcol{background:#eef3f8}
@@ -352,7 +352,7 @@ td:first-child,th:first-child{text-align:left}
 .msg small{display:block;color:#6b6b6b;font-size:10px}
 .sub{padding:0 14px 8px}
 </style></head><body>
-<div class="hdr"><div class="brand"><div><b>MFInvestment</b><span>ダッシュボード</span></div><div class="upd" id="sub">Beds24から自動集計</div></div>
+<div class="hdr"><div class="brand"><b>MFInvestment</b><span class="upd" id="sub"></span></div>
 <div class="top"><span id="title">今日</span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
 <div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button><button data-tab="sales" class="sales" style="display:none">売上</button></div></div>
 <div class="cnt" id="cnt" style="display:none"></div>
@@ -376,11 +376,11 @@ async function load(tab,force){
   if(d.canSales)document.querySelectorAll('#tabs .sales').forEach(b=>b.style.display='');
   const titles={today:'今日　'+(d.label||''),tomorrow:'明日　'+(d.label||''),week:'今週',cal:'カレンダー',overview:'概要',kpi:'月別のKPI',props:'物件',pace:'予約ペース',sales:'売上'};
   document.getElementById('title').textContent=titles[tab]||tab;
-  document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 更新・Beds24から自動集計':(tab==='sales'&&d.at?d.at+' 時点':'Beds24から自動集計');
+  document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 更新':(tab==='sales'&&d.at?d.at+' 時点':'');
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
-  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});setTimeout(()=>{const sc=app.querySelector('.tbl');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.offsetLeft-180);},0);}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});const go=()=>{const sc=app.querySelector('.kt');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.getBoundingClientRect().left-sc.getBoundingClientRect().left+sc.scrollLeft-180);};setTimeout(go,30);setTimeout(go,400);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
