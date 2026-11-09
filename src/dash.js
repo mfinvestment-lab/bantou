@@ -379,12 +379,20 @@ async function load(tab,force){
   document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 更新':(tab==='sales'&&d.at?d.at+' 時点':'');
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
-  if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
-  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});const go=()=>{const sc=app.querySelector('.kt');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.getBoundingClientRect().left-sc.getBoundingClientRect().left+sc.scrollLeft-180);};setTimeout(go,30);setTimeout(go,400);}
+  if(tab==='cal'){axisLock(app.querySelector('.scroll'));app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});axisLock(app.querySelector('.kt'));const go=()=>{const sc=app.querySelector('.kt');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.getBoundingClientRect().left-sc.getBoundingClientRect().left+sc.scrollLeft-180);};setTimeout(go,30);setTimeout(go,400);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
 }
+// 表のスクロールを縦か横のどちらか一方に固定する（斜めに流れない）
+function axisLock(el){if(!el||el.__axis)return;el.__axis=1;let sx=0,sy=0,sl=0,st=0,axis=null;
+  el.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;sl=el.scrollLeft;st=el.scrollTop;axis=null;},{passive:true});
+  el.addEventListener('touchmove',e=>{const t=e.touches[0];const dx=t.clientX-sx,dy=t.clientY-sy;
+    if(!axis){if(Math.abs(dx)<6&&Math.abs(dy)<6)return;axis=Math.abs(dx)>Math.abs(dy)?'x':'y';}
+    if(axis==='x'){el.scrollLeft=sl-dx;if(e.cancelable)e.preventDefault();}
+    else{const atTop=el.scrollTop<=0&&dy>0,atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-1&&dy<0;if(el.scrollHeight>el.clientHeight+1&&!atTop&&!atBottom){el.scrollTop=st-dy;if(e.cancelable)e.preventDefault();}}
+  },{passive:false});}
 const man=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万円';const manS=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万';
 const yoy=(v,unit='%')=>v==null?'<span class="muted">—</span>':'<span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'')+v+unit+'</span>';
 function barChart(ms){ // 月別売上：前年(灰)・実績(赤)・予約済み(薄赤)
