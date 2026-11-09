@@ -125,6 +125,23 @@ export const seen = {
   mark: (kv, msgId) => kv.put(`seen:${msgId}`, "1", { expirationTtl: 60 * 60 * 24 * 30 })
 };
 
+// ---- 値付けの記録（当社が行った価格・条件の変更） ----
+export const pricelog = {
+  async add(kv, { property, change, reason, by, source = "manual", date }) {
+    const d = date || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+    const id = `${d}-${Date.now().toString(36)}`;
+    await kv.put(`pricelog:${id}`, JSON.stringify({ id, date: d, property, change, reason: reason || "", by: by || "", source, at: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 400 });
+    return id;
+  },
+  async list(kv, days = 30) {
+    const l = await kv.list({ prefix: "pricelog:" });
+    const since = new Date(Date.now() - days * 86400000).toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+    const items = (await Promise.all(l.keys.map(k => kv.get(k.name, "json")))).filter(x => x && x.date >= since);
+    return items.sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at));
+  },
+  async remove(kv, id) { await kv.delete(`pricelog:${id}`); }
+};
+
 // ---- 物件ID→名前のキャッシュ ----
 export const props = {
   get: (kv) => j.get(kv, "props:map", null),

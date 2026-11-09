@@ -1,13 +1,13 @@
 // SORA（管理用）: 承認カードのボタン処理と、FAQ・ルール・学習例の登録コマンド
 import { sora, sourceIdOf } from "./line.js";
-import { rules, faq, examples, resolveProperty, listProperties, props, aliases, normalizeProperty } from "./store.js";
+import { rules, faq, examples, resolveProperty, listProperties, props, aliases, normalizeProperty, pricelog } from "./store.js";
 import { getToken, fetchPropertyMap } from "./beds24.js";
 import { faqCandidates } from "./learn.js";
 import { jobs } from "./jobs.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 番号…（2-7 も可）／ 学習削除 物件名 番号";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 番号…（2-7 も可）／ 学習削除 物件名 番号\n値付け 物件名 変更内容｜理由（値付けの記録。ダッシュボードに表示）";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -191,6 +191,17 @@ export async function handleSoraEvent(env, event) {
       if (q) f.q = q; if (a) f.a = a; f.editedAt = new Date().toISOString();
       await faq.update(env.KV, p, list);
       await line.replyRaw(event.replyToken, [withMenu(`✏️ ${p} のFAQ ${n} を更新しました\nQ: ${f.q}\nA: ${f.a}`)]);
+      return;
+    }
+    if (cmd === "値付け" || cmd === "値付け記録") {
+      // 形式：値付け 物件名 変更内容｜理由   または 2行目に理由
+      const p = await resolveProperty(env.KV, args[0]);
+      const rest = [args.slice(1).join(" "), ...restLines].join("\n").trim();
+      const [change, ...reasonParts] = rest.split(/[｜|\n]/);
+      if (!p || !change?.trim()) { await line.reply(event.replyToken, "形式：値付け 物件名 変更内容｜理由\n例：値付け サクヤ 12/1〜12/20の平日 -8%｜12月前半の予約ペースが前年比78%"); return; }
+      const who = (await line.memberName(event.source.groupId, userId)) || "";
+      await pricelog.add(env.KV, { property: p, change: change.trim(), reason: reasonParts.join(" ").trim(), by: who });
+      await line.reply(event.replyToken, `📝 値付けの記録に追加しました\n${p}：${change.trim()}${reasonParts.length ? `\n理由：${reasonParts.join(" ").trim()}` : ""}\n（ダッシュボードの「ペース」タブに表示されます）`);
       return;
     }
     if (cmd === "テスト") {

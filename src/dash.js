@@ -1,6 +1,6 @@
 // ダッシュボード（LIFF）: 画面案④に沿った「今日」（KPI・要対応・物件ごとの動き）、明日、今週、売上（許可ユーザーのみ）
 import { BEDS24_PROPERTIES, getToken, getBookings, formatDateYMD, addDays, fetchPropertyMap, sendGuestMessage, fetchThread } from "./beds24.js";
-import { props as propsCache, normalizeProperty } from "./store.js";
+import { props as propsCache, normalizeProperty, pricelog } from "./store.js";
 import { todayCleaningStatus } from "./cleanlog.js";
 import { sora } from "./line.js";
 
@@ -228,7 +228,7 @@ export async function handleDash(request, env, url) {
     if (!allow(env, "DASH_ALLOW", u.userId)) return json({ error: "閲覧権限がありません" }, 403);
     const canSales = allow(env, "SALES_ALLOW", u.userId);
     if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await cachedSales(env, !!force)), canSales }); }
-    if (tab === "kpi") { if (!canSales) return json({ error: "経営指標の閲覧権限がありません" }, 403); return json({ ...(await cachedKpi(env, !!force)), canSales }); }
+    if (tab === "kpi") { if (!canSales) return json({ error: "経営指標の閲覧権限がありません" }, 403); const [k, pl] = await Promise.all([cachedKpi(env, !!force), pricelog.list(env.KV, 30)]); return json({ ...k, pricelog: pl, canSales }); }
     if (tab === "week") return json({ ...(await weekData(env)), canSales });
     if (tab === "cal") { const st = /^\d{4}-\d{2}-\d{2}$/.test(start || "") ? start : formatDateYMD(addDays(new Date(), -2)); return json({ ...(await calendarData(env, st, 28)), canSales }); }
     if (tab === "detail") return json({ ...(await bookingDetail(env, bookingId)), canSales });
@@ -435,7 +435,12 @@ function renderPace(d){
   h+='</div><p class="note">100%を下回る月は前年より売れ行きが遅い月です。前年の着地ではなく「前年の同じ日時点の予約済み」と比べています。</p>';
   h+='<div class="sec">BY PROPERTY</div><div class="h">物件ごとの予約ペース<small>前年同時点を100%として</small></div><div class="tbl" style="overflow-x:auto"><table class="heat"><tr><th style="text-align:left">物件</th>'+d.pace.map(r=>'<th>'+esc(r.label.slice(5))+'<span class="s">'+r.label.slice(0,4)+'</span></th>').join('')+'</tr>';
   for(const p of d.props){h+='<tr><td style="text-align:left">'+esc(p)+'</td>'+d.pace.map(r=>{const v=r.byProp[p];const bg=v==null?'#fff':v>=110?'#e3f1e7':v>=100?'#f1f7f2':v>=90?'#fff3cd':'#f9d6dc';return '<td style="background:'+bg+'">'+(v==null?'—':v+'%')+'</td>';}).join('')+'</tr>';}
-  h+='</table></div><p class="note">90%未満は赤。遅れている物件×月から、価格・最低泊数・プロモーションを見直す。値付けの記録はPriceLabs接続後に追加。</p>';
+  h+='</table></div><p class="note">90%未満は赤。遅れている物件×月から、価格・最低泊数・プロモーションを見直す。</p>';
+  h+='<div class="sec">ACTIONS</div><div class="h">値付けの記録<small>直近30日に当社が行った変更</small></div><div class="tbl"><table><tr><th style="text-align:left">日付</th><th style="text-align:left">物件</th><th style="text-align:left">変更内容</th><th style="text-align:left">理由</th></tr>';
+  const pl=d.pricelog||[];
+  if(!pl.length)h+='<tr><td colspan="4" class="muted" style="font-weight:400">記録なし。SORAに「値付け 物件名 変更内容｜理由」と送ると追加されます。</td></tr>';
+  for(const x of pl)h+='<tr><td style="font-weight:400;color:#6b6b6b">'+esc(x.date.slice(5).replace('-','/'))+'</td><td style="text-align:left;font-weight:400">'+esc(x.property)+'</td><td style="text-align:left">'+esc(x.change)+'</td><td style="text-align:left;font-weight:400;color:#6b6b6b;white-space:normal">'+esc(x.reason||'')+'</td></tr>';
+  h+='</table></div><p class="note">PriceLabsの変更履歴の自動取り込みは接続後に追加。</p>';
   return h;}
 function renderDay(d,tab){
   const k=d.kpi;let h='<div class="kpi" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div></div>';
