@@ -25,7 +25,7 @@ export async function handleLiff(request, env, url) {
   const path = url.pathname;
   if (path === "/liff/linen" && request.method === "GET") {
     if (!env.LIFF_ID) return new Response("LIFF_ID が未設定です", { status: 503 });
-    return new Response(PAGE.replace("__LIFF_ID__", env.LIFF_ID), { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response(PAGE.replace("__LIFF_ID__", env.LIFF_ID), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" } });
   }
   if (path === "/liff/linen/me" && request.method === "POST") {
     const { idToken } = await request.json();

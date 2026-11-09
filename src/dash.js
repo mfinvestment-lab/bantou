@@ -224,7 +224,7 @@ export async function handleDash(request, env, url) {
   if (path === "/liff/dash" && request.method === "GET") {
     const id = env.LIFF_DASH_ID || env.LIFF_ID;
     if (!id) return new Response("LIFF_ID が未設定です", { status: 503 });
-    return new Response(PAGE.replace("__LIFF_ID__", id), { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response(PAGE.replace("__LIFF_ID__", id), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" } });
   }
   if (path === "/liff/dash/data" && request.method === "POST") {
     const { idToken, tab, force, start, bookingId } = await request.json();
