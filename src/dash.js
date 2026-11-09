@@ -247,7 +247,7 @@ export async function handleDash(request, env, url) {
 const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>ダッシュボード</title>
 <style>
-:root{--red:#c8102e;--ink:#1a1a1a;--mut:#6b6b6b;--bg:#f6f4ef;--line:#e6e2da}
+:root{--red:#2a4d69;--ink:#1a1a1a;--mut:#6b6b6b;--bg:#f3f5f7;--line:#dfe4ea;--acc2:#9fb3c8}
 body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
 .hdr{background:#fff;border-bottom:1px solid var(--line);padding:10px 12px 8px;position:sticky;top:0;z-index:5}
 .hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:17px;font-weight:700}
@@ -263,26 +263,26 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .kc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
 .kc.hi{border:2px solid var(--red)}
 .kc .t{font-size:11px;color:var(--mut)}.kc .v{font-size:26px;font-weight:800;margin:2px 0}.kc .v small{font-size:13px;font-weight:700}.kc.hi .v{color:var(--red)}
-.kc .d{font-size:11px;color:var(--mut)}.up{color:#1e7a3c}.dn{color:var(--red)}
+.kc .d{font-size:11px;color:var(--mut)}.up{color:#1e7a3c}.dn{color:#c0392b}
 .chart{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
 .chart svg{width:100%;height:auto;display:block}
 .lg{display:flex;gap:12px;font-size:11px;color:var(--mut);padding:0 2px 6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .tbl{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .tbl table{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th,.tbl td{padding:8px 6px;border-bottom:1px solid #eee;text-align:right;vertical-align:top}
-.tbl th{background:#faf8f4;color:var(--mut);font-weight:700;font-size:11px}
+.tbl th{background:#f6f8fa;color:var(--mut);font-weight:700;font-size:11px}
 .tbl td:first-child,.tbl th:first-child{text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1}
 .tbl td .s,.tbl th .s{display:block;font-size:10px;font-weight:400}
-.tbl tr.tot td{background:#fcfbf8;font-weight:700}
-.tbl .cur td{background:#fff7f8}
+.tbl tr.tot td{background:#f9fafb;font-weight:700}
+.tbl .cur td{background:#eef3f8}
 .seg{display:flex;gap:6px;margin:4px 0}.seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
 .rank{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:5px;color:#fff;font-weight:800;text-align:center;font-size:12px}
-.rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:var(--red)}
+.rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:#c0392b}
 .hl{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6}
 .hl .tag{display:inline-block;background:var(--ink);color:#fff;font-size:10px;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .hl p{margin:6px 0}
 .pace .row2{display:grid;grid-template-columns:62px 1fr 92px;gap:8px;align-items:center;font-size:12px;padding:6px 0;border-bottom:1px solid #eee}
-.pace .bars{position:relative;height:18px}.pace .bars i{position:absolute;left:0;height:7px;border-radius:2px}.pace .bars .b1{top:0;background:var(--red)}.pace .bars .b2{top:10px;background:#d9d4ca}
+.pace .bars{position:relative;height:18px}.pace .bars i{position:absolute;left:0;height:7px;border-radius:2px}.pace .bars .b1{top:0;background:var(--red)}.pace .bars .b2{top:10px;background:#cfd8e3}
 .pace .pv{text-align:right;font-weight:800}.pace .pv small{display:block;font-weight:400;color:var(--mut);font-size:10px}
 .heat td{text-align:center;font-weight:700}
 .note{font-size:11px;color:var(--mut);padding:0 4px}
@@ -292,13 +292,13 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .kpi div{background:#fff;border-radius:10px;padding:10px 6px;text-align:center}
 .kpi b{display:block;font-size:24px}
 .kpi small{font-size:11px;color:#6b6b6b}
-.kpi .warn{border:2px solid var(--red)}.kpi .warn b,.kpi .warn small{color:var(--red)}
+.kpi .warn{border:2px solid #c0392b}.kpi .warn b,.kpi .warn small{color:#c0392b}
 .card{background:#fff;border-radius:10px;overflow:hidden}
 .card h3{margin:0;padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e5e5}
 .row{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #e5e5e5;font-size:13px}
 .row:last-child{border-bottom:0}
 .row b{display:block}
-.red{color:var(--red)}.green{color:#1e7a3c}.muted{color:#6b6b6b}
+.red{color:#c0392b}.green{color:#1e7a3c}.muted{color:#6b6b6b}
 .btn{min-height:44px;padding:0 12px;border:1px solid #1a1a1a;background:#fff;border-radius:8px;font-size:12px;font-weight:700}
 .btn.dark{background:#1a1a1a;color:#fff}
 .grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;font-size:13px;padding:9px 14px;border-bottom:1px solid #e5e5e5;gap:4px}
@@ -371,18 +371,18 @@ async function load(tab,force){
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
-  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});setTimeout(()=>{const sc=app.querySelector('.tbl');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.offsetLeft-sc.clientWidth/2+th.offsetWidth/2);},0);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
 }
-const man=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万円';
+const man=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万円';const manS=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万';
 const yoy=(v,unit='%')=>v==null?'<span class="muted">—</span>':'<span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'')+v+unit+'</span>';
 function barChart(ms){ // 月別売上：前年(灰)・実績(赤)・予約済み(薄赤)
   const W=520,H=190,pl=8,pb=26,pt=8;const max=Math.max(1,...ms.map(m=>Math.max(m.rev,m.prev)));const n=ms.length,gw=(W-pl*2)/n,bw=Math.max(4,gw*0.33);
   let g='';ms.forEach((m,i)=>{const x=pl+i*gw;const h1=(m.prev/max)*(H-pb-pt),h2=(m.rev/max)*(H-pb-pt);
-    g+='<rect x="'+(x+gw*0.12)+'" y="'+(H-pb-h1)+'" width="'+bw+'" height="'+h1+'" fill="#d9d4ca"/>';
-    g+='<rect x="'+(x+gw*0.12+bw+2)+'" y="'+(H-pb-h2)+'" width="'+bw+'" height="'+h2+'" fill="'+(m.future?'#f0a3ae':'#c8102e')+'"'+(m.future?' stroke="#c8102e" stroke-dasharray="2 2"':'')+'/>';
+    g+='<rect x="'+(x+gw*0.12)+'" y="'+(H-pb-h1)+'" width="'+bw+'" height="'+h1+'" fill="#cfd8e3"/>';
+    g+='<rect x="'+(x+gw*0.12+bw+2)+'" y="'+(H-pb-h2)+'" width="'+bw+'" height="'+h2+'" fill="'+(m.future?'#9fb3c8':'#2a4d69')+'"'+(m.future?' stroke="#2a4d69" stroke-dasharray="2 2"':'')+'/>';
     if(m.isCurrent)g+='<line x1="'+(x+gw/2)+'" x2="'+(x+gw/2)+'" y1="0" y2="'+(H-pb+4)+'" stroke="#1a1a1a" stroke-dasharray="3 3" opacity=".5"/>';
     g+='<text x="'+(x+gw/2)+'" y="'+(H-8)+'" font-size="10" text-anchor="middle" fill="#6b6b6b">'+m.label.replace('月','')+(m.ym.endsWith('-01')?'<tspan x="'+(x+gw/2)+'" dy="0" font-size="0"></tspan>':'')+'</text>';});
   return '<svg viewBox="0 0 '+W+' '+H+'">'+g+'</svg>';}
@@ -390,8 +390,8 @@ function lineChart(ms){const W=520,H=150,pl=8,pb=22,pt=8;const pts=(k)=>ms.map((
   const path=a=>a.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   const a=pts('occ').filter((p,i)=>!ms[i].future),b=pts('prevOcc');
   let g='';[25,50,75,100].forEach(v=>{const y=H-pb-(v/100)*(H-pb-pt);g+='<line x1="'+pl+'" x2="'+(W-pl)+'" y1="'+y+'" y2="'+y+'" stroke="#eee"/><text x="'+(W-pl)+'" y="'+(y-2)+'" font-size="9" text-anchor="end" fill="#aaa">'+v+'%</text>';});
-  g+='<path d="'+path(b)+'" fill="none" stroke="#c9c3b8" stroke-width="2"/><path d="'+path(a)+'" fill="none" stroke="#c8102e" stroke-width="2.5"/>';
-  a.forEach(p=>g+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="#c8102e"/>');
+  g+='<path d="'+path(b)+'" fill="none" stroke="#cfd8e3" stroke-width="2"/><path d="'+path(a)+'" fill="none" stroke="#2a4d69" stroke-width="2.5"/>';
+  a.forEach(p=>g+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="#2a4d69"/>');
   ms.forEach((m,i)=>g+='<text x="'+(pl+(i+0.5)*((W-pl*2)/ms.length))+'" y="'+(H-6)+'" font-size="10" text-anchor="middle" fill="#6b6b6b">'+m.label.replace('月','')+'</text>');
   return '<svg viewBox="0 0 '+W+' '+H+'">'+g+'</svg>';}
 function renderOverview(d){const o=d.overview;
@@ -401,17 +401,17 @@ function renderOverview(d){const o=d.overview;
   h+='<div class="kc"><div class="t">1室1日あたり売上（RevPAR）</div><div class="v">'+Number(o.revpar).toLocaleString()+'<small>円</small></div><div class="d">前年同月 '+yoy(o.revparYoY)+'</div></div></div>';
   h+='<div class="kc" style="width:auto"><div class="t">'+esc(o.ytdLabel)+'</div><div class="v">'+man(o.ytd)+'</div><div class="d">前年同期 '+yoy(o.ytdYoY)+'</div></div>';
   h+='<div class="sec">HIGHLIGHTS</div><div class="h">今月の要点</div><div class="hl">'+(d.highlights.length?d.highlights.map(x=>'<p><span class="tag">'+esc(x.tag)+'</span>'+esc(x.text)+'</p>').join(''):'<p class="muted">特記事項なし</p>')+'</div>';
-  h+='<div class="sec">REVENUE</div><div class="h">月別の宿泊売上<small>過去12か月の実績 と これから5か月の予約済み</small></div><div class="chart"><div class="lg"><span><i style="background:#c8102e"></i>今年（実績）</span><span><i style="background:#f0a3ae;border:1px dashed #c8102e"></i>予約済み（これから増えます）</span><span><i style="background:#d9d4ca"></i>前年の実績</span></div>'+barChart(d.monthly)+'</div>';
-  h+='<div class="sec">OCCUPANCY</div><div class="h">稼働率<small>月別・前年との比較</small></div><div class="chart"><div class="lg"><span><i style="background:#c8102e"></i>今年</span><span><i style="background:#c9c3b8"></i>前年</span></div>'+lineChart(d.monthly)+'</div>';
+  h+='<div class="sec">REVENUE</div><div class="h">月別の宿泊売上<small>過去12か月の実績 と これから5か月の予約済み</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年（実績）</span><span><i style="background:#9fb3c8;border:1px dashed #2a4d69"></i>予約済み（これから増えます）</span><span><i style="background:#cfd8e3"></i>前年の実績</span></div>'+barChart(d.monthly)+'</div>';
+  h+='<div class="sec">OCCUPANCY</div><div class="h">稼働率<small>月別・前年との比較</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年</span><span><i style="background:#cfd8e3"></i>前年</span></div>'+lineChart(d.monthly)+'</div>';
   h+='<p class="note">到着日ベース・キャンセル除く・Beds24の料金（清掃費込み）。市場比較・値付け記録はPriceLabs接続後に追加。</p>';
   return h;}
 function renderKpi(d){
   const ms=d.series;const money=kpiSub==='money';
   let h='<div class="seg"><button data-seg="money" class="'+(money?'on':'')+'">売上・稼働率・ADR・RevPAR</button><button data-seg="vol" class="'+(money?'':'on')+'">泊数・人数・1泊の件数・リードタイム</button></div>';
-  const metrics=money?[['売上','rev',v=>man(v),(c,p)=>yoy(p&&p.rev?Math.round((c.rev/p.rev-1)*1000)/10:null)],['稼働率','occ',v=>v+'%',(c,p)=>yoy(p?Math.round((c.occ-p.occ)*10)/10:null,'pt')],['ADR','adr',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.adr?Math.round((c.adr/p.adr-1)*1000)/10:null)],['RevPAR','revpar',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.revpar?Math.round((c.revpar/p.revpar-1)*1000)/10:null)]]
+  const metrics=money?[['売上','rev',v=>manS(v),(c,p)=>yoy(p&&p.rev?Math.round((c.rev/p.rev-1)*1000)/10:null)],['稼働率','occ',v=>v+'%',(c,p)=>yoy(p?Math.round((c.occ-p.occ)*10)/10:null,'pt')],['ADR','adr',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.adr?Math.round((c.adr/p.adr-1)*1000)/10:null)],['RevPAR','revpar',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.revpar?Math.round((c.revpar/p.revpar-1)*1000)/10:null)]]
     :[['泊数','nights',v=>v,(c,p)=>yoy(p&&p.nights?Math.round((c.nights/p.nights-1)*1000)/10:null)],['平均人数','pax',v=>v+'人',(c,p)=>yoy(p?Math.round((c.pax-p.pax)*10)/10:null,'人')],['1泊の件数','oneNight',v=>v+'%',(c,p)=>yoy(p?c.oneNight-p.oneNight:null,'pt')],['リードタイム','lead',v=>v==null?'—':v+'日',(c,p)=>yoy(p&&p.lead!=null&&c.lead!=null?c.lead-p.lead:null,'日')]];
   const rows=[['合計',null],...d.props.map(p=>[p,p])];
-  h+='<div class="tbl" style="overflow-x:auto"><table><thead><tr><th>物件</th><th>指標</th>'+ms.map(m=>'<th'+(m.isCurrent?' style="color:#c8102e"':'')+'>'+m.label+'<span class="s">'+m.year+(m.future?' 予約済':'')+'</span></th>').join('')+'</tr></thead><tbody>';
+  h+='<div class="tbl" style="overflow-x:auto"><table><thead><tr><th>物件</th><th>指標</th>'+ms.map(m=>'<th'+(m.isCurrent?' class="curcol" style="color:#2a4d69"':'')+'>'+m.label+'<span class="s">'+m.year+(m.future?' 予約済':'')+'</span></th>').join('')+'</tr></thead><tbody>';
   for(const [name,key] of rows){metrics.forEach(([ml,mk,fmt,cmp],i)=>{h+='<tr'+(key===null?' class="tot"':'')+'>'+(i===0?'<td rowspan="'+metrics.length+'">'+esc(name)+'</td>':'')+'<td style="text-align:left;color:#6b6b6b">'+ml+'</td>';
     for(const m of ms){const c=key===null?m.total:m.props[key];const p=c&&c.prev;h+='<td>'+(c?fmt(c[mk]):'—')+'<span class="s">'+(c?cmp(c,p):'')+'</span></td>';}
     h+='</tr>';});}
@@ -425,7 +425,7 @@ function renderProps(d){
   h+='<div class="sec">CHANNELS</div><div class="h">販売チャネル<small>直近12か月の売上</small></div><div class="chart"><div style="display:flex;height:14px;border-radius:4px;overflow:hidden;margin-bottom:8px">'+d.channels.map(c=>'<i style="flex:'+c.rev+';background:'+(col[c.key]||'#999')+'"></i>').join('')+'</div><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:#6b6b6b"><th style="text-align:left;font-weight:400">チャネル</th><th style="text-align:right;font-weight:400">売上</th><th style="text-align:right;font-weight:400">構成比</th><th style="text-align:right;font-weight:400">手数料率</th></tr>'+d.channels.map(c=>'<tr><td style="padding:5px 0"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+(col[c.key]||'#999')+';margin-right:6px"></i>'+esc(c.label)+'</td><td style="text-align:right">¥'+c.rev.toLocaleString()+'</td><td style="text-align:right">'+c.share+'%</td><td style="text-align:right">'+c.fee+'%</td></tr>').join('')+'<tr style="font-weight:700;border-top:1px solid #eee"><td style="padding-top:6px">合計</td><td style="text-align:right">¥'+tot.toLocaleString()+'</td><td style="text-align:right">100%</td><td style="text-align:right">'+d.feeAvg+'%</td></tr></table></div><p class="note">手数料率は目安の設定値（Airbnb 15.5%・Booking 15%・Agoda 17%）。実額は各OTAの明細で確認。</p>';
   return h;}
 function renderPace(d){
-  let h='<div class="sec">PACE</div><div class="h">これから先の予約ペース<small>前年の同じ日と比べて</small></div><div class="lg"><span><i style="background:#c8102e"></i>今の予約</span><span><i style="background:#d9d4ca"></i>前年の同じ時点</span></div><div class="pace tbl" style="padding:4px 12px">';
+  let h='<div class="sec">PACE</div><div class="h">これから先の予約ペース<small>前年の同じ日と比べて</small></div><div class="lg"><span><i style="background:#2a4d69"></i>今の予約</span><span><i style="background:#cfd8e3"></i>前年の同じ時点</span></div><div class="pace tbl" style="padding:4px 12px">';
   const max=Math.max(1,...d.pace.map(r=>Math.max(r.now,r.prevAsOf)));
   for(const r of d.pace){h+='<div class="row2"><div>'+esc(r.label)+'</div><div class="bars"><i class="b1" style="width:'+(r.now/max*100)+'%"></i><i class="b2" style="width:'+(r.prevAsOf/max*100)+'%"></i></div><div class="pv '+(r.pace==null?'':r.pace>=100?'up':'dn')+'">'+(r.pace==null?'—':r.pace+'%')+'<small>'+man(r.now)+' / '+man(r.prevAsOf)+'</small></div></div>';}
   h+='</div><p class="note">100%を下回る月は前年より売れ行きが遅い月です。前年の着地ではなく「前年の同じ日時点の予約済み」と比べています。</p>';

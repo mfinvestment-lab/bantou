@@ -15,7 +15,7 @@ const ym = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2,
 const monthOf = ymd => ymd.slice(0, 7);
 const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate(); // m: 1-12
 const pct = (a, b) => (b ? Math.round((a / b - 1) * 1000) / 10 : null);
-const pt = (a, b) => (a != null && b != null ? Math.round((a - b) * 10) / 10 : null);
+const pt = (a, b) => (a != null && b != null && b !== 0 ? Math.round((a - b) * 10) / 10 : null);
 
 async function allProperties(env, token) {
   let map = await propsCache.get(env.KV);
@@ -121,7 +121,7 @@ export async function kpiData(env) {
   const feeAvg = Math.round((Object.entries(chanAgg).reduce((a, [c, v]) => a + v * (FEE[c] || 0), 0) / chanTotal) * 1000) / 10;
 
   // KPI表（物件×月）：売上/稼働/ADR/RevPAR と 泊数/人数/1泊比率/リードタイム
-  const table = series.map(s => ({ ym: s.ym, label: s.label, year: s.year, future: s.future, isCurrent: s.isCurrent, total: { ...s.cur.total, prev: s.prev.total }, props: Object.fromEntries(propList.map(p => [p, { ...(s.cur.props[p] || { rev: 0, nights: 0, bookings: 0, occ: 0, adr: 0, revpar: 0, pax: 0, oneNight: 0, lead: null }), prev: s.prev.props[p] || null }])) }));
+  const table = series.map(s => ({ ym: s.ym, label: s.label, year: s.year, future: s.future, isCurrent: s.isCurrent, total: { ...s.cur.total, prev: s.prev.total.bookings ? s.prev.total : null }, props: Object.fromEntries(propList.map(p => [p, { ...(s.cur.props[p] || { rev: 0, nights: 0, bookings: 0, occ: 0, adr: 0, revpar: 0, pax: 0, oneNight: 0, lead: null }), prev: (s.prev.props[p] && s.prev.props[p].bookings) ? s.prev.props[p] : null }])) }));
 
   return {
     at: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
