@@ -275,7 +275,11 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .tbl td .s,.tbl th .s{display:block;font-size:10px;font-weight:400}
 .tbl tr.tot td{background:#f9fafb;font-weight:700}
 .tbl .cur td{background:#eef3f8}
-.seg{display:flex;gap:6px;margin:4px 0}.seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
+.seg{display:flex;flex-direction:column;gap:8px;margin:4px 0}.seg button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px 10px;font-size:15px;font-weight:700;text-align:left;color:var(--ink)}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
+.kt table{font-size:15px}.kt th,.kt td{padding:12px 10px;white-space:nowrap}.kt td{font-weight:700;line-height:1.3}.kt td .s{font-size:13px;font-weight:600;margin-top:2px}.kt th .s{font-size:12px}
+.kt .pc{position:sticky;left:0;background:#fff;z-index:2;width:104px;min-width:104px;max-width:104px;box-sizing:border-box;white-space:normal;font-weight:800;border-right:1px solid var(--line)}.kt .pc small{display:block;font-weight:400;color:var(--mut);font-size:12px;margin-top:2px}
+.kt .mc{position:sticky;left:104px !important;background:#fff;z-index:2;color:var(--ink);font-weight:700;text-align:left;border-right:1px solid var(--line);min-width:72px}
+.kt tr.grp td{border-top:2px solid var(--line)}.kt tr.tot .pc,.kt tr.tot .mc{background:#f9fafb}.kt th.pc,.kt th.mc{background:#f6f8fa;z-index:3}.kt th.curcol,.kt td.curcol{background:#eef3f8}
 .rank{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:5px;color:#fff;font-weight:800;text-align:center;font-size:12px}
 .rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:#c0392b}
 .hl{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6}
@@ -371,7 +375,7 @@ async function load(tab,force){
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
-  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});setTimeout(()=>{const sc=app.querySelector('.tbl');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.offsetLeft-sc.clientWidth/2+th.offsetWidth/2);},0);}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});setTimeout(()=>{const sc=app.querySelector('.tbl');const th=sc&&sc.querySelector('th.curcol');if(th)sc.scrollLeft=Math.max(0,th.offsetLeft-180);},0);}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
@@ -411,9 +415,9 @@ function renderKpi(d){
   const metrics=money?[['売上','rev',v=>manS(v),(c,p)=>yoy(p&&p.rev?Math.round((c.rev/p.rev-1)*1000)/10:null)],['稼働率','occ',v=>v+'%',(c,p)=>yoy(p?Math.round((c.occ-p.occ)*10)/10:null,'pt')],['ADR','adr',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.adr?Math.round((c.adr/p.adr-1)*1000)/10:null)],['RevPAR','revpar',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.revpar?Math.round((c.revpar/p.revpar-1)*1000)/10:null)]]
     :[['泊数','nights',v=>v,(c,p)=>yoy(p&&p.nights?Math.round((c.nights/p.nights-1)*1000)/10:null)],['平均人数','pax',v=>v+'人',(c,p)=>yoy(p?Math.round((c.pax-p.pax)*10)/10:null,'人')],['1泊の件数','oneNight',v=>v+'%',(c,p)=>yoy(p?c.oneNight-p.oneNight:null,'pt')],['リードタイム','lead',v=>v==null?'—':v+'日',(c,p)=>yoy(p&&p.lead!=null&&c.lead!=null?c.lead-p.lead:null,'日')]];
   const rows=[['合計',null],...d.props.map(p=>[p,p])];
-  h+='<div class="tbl" style="overflow-x:auto"><table><thead><tr><th>物件</th><th>指標</th>'+ms.map(m=>'<th'+(m.isCurrent?' class="curcol" style="color:#2a4d69"':'')+'>'+m.label+'<span class="s">'+m.year+(m.future?' 予約済':'')+'</span></th>').join('')+'</tr></thead><tbody>';
-  for(const [name,key] of rows){metrics.forEach(([ml,mk,fmt,cmp],i)=>{h+='<tr'+(key===null?' class="tot"':'')+'>'+(i===0?'<td rowspan="'+metrics.length+'">'+esc(name)+'</td>':'')+'<td style="text-align:left;color:#6b6b6b">'+ml+'</td>';
-    for(const m of ms){const c=key===null?m.total:m.props[key];const p=c&&c.prev;h+='<td>'+(c?fmt(c[mk]):'—')+'<span class="s">'+(c?cmp(c,p):'')+'</span></td>';}
+  h+='<div class="tbl kt" style="overflow-x:auto"><table><thead><tr><th class="pc">物件</th><th class="mc">指標</th>'+ms.map(m=>'<th'+(m.isCurrent?' class="curcol"':'')+'>'+m.label+'<span class="s">'+m.year+(m.future?' 予約済':'')+'</span></th>').join('')+'</tr></thead><tbody>';
+  for(const [name,key] of rows){metrics.forEach(([ml,mk,fmt,cmp],i)=>{h+='<tr class="'+(key===null?'tot ':'')+(i===0?'grp':'')+'">'+(i===0?'<td class="pc" rowspan="'+metrics.length+'">'+esc(name)+(key===null?'<small>'+d.props.length+'物件</small>':'')+'</td>':'')+'<td class="mc">'+ml+'</td>';
+    for(const m of ms){const c=key===null?m.total:m.props[key];const p=c&&c.prev;h+='<td'+(m.isCurrent?' class="curcol"':'')+'>'+(c?fmt(c[mk]):'—')+'<span class="s">'+(c?cmp(c,p):'')+'</span></td>';}
     h+='</tr>';});}
   h+='</tbody></table></div><p class="note">左右にスクロールできます。今月より右は「予約済み」で、今後増えます。前年比は前年同月の最終実績との比較。</p>';
   return h;}
