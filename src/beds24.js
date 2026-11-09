@@ -33,11 +33,19 @@ export async function setupFromInviteCode(env, code) {
 }
 
 export async function getBookings(token, query) {
-  const url = `https://beds24.com/api/v2/bookings?${query}&includeInvoiceItems=false`;
-  const res = await fetch(url, { headers: { accept: "application/json", token } });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Beds24予約取得エラー (${query}): ${JSON.stringify(data)}`);
-  return data.data || data || [];
+  // 1ページで収まらないときは nextPageExists を見て続きを取る（月をまたぐ集計で100件を超えることがある）
+  let url = `https://beds24.com/api/v2/bookings?${query}&includeInvoiceItems=false`;
+  const out = [];
+  for (let page = 0; page < 20; page++) {
+    const res = await fetch(url, { headers: { accept: "application/json", token } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`Beds24予約取得エラー (${query}): ${JSON.stringify(data)}`);
+    const list = data.data || (Array.isArray(data) ? data : []);
+    out.push(...list);
+    if (!data.pages?.nextPageExists || !data.pages?.nextPageLink) break;
+    url = data.pages.nextPageLink.startsWith("http") ? data.pages.nextPageLink : `https://beds24.com/api/v2${data.pages.nextPageLink}`;
+  }
+  return out;
 }
 
 // 到着が today〜rangeEnd の予約 ＋ 本日出発の予約（キャンセル除く）

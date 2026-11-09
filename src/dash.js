@@ -189,10 +189,14 @@ async function cached(env, key, ttl, fn, force = false) {
 }
 export const cachedToday = (env, force) => cached(env, "dash:today:" + formatDateYMD(new Date()), 120, () => dayData(env, formatDateYMD(new Date())), force);
 export const cachedSales = (env, force) => cached(env, "dash:sales", 1800, () => salesData(env), force);
+export const cachedKpi = (env, force) => cached(env, "dash:kpi", 6 * 3600, async () => (await import("./kpi.js")).kpiData(env), force);
 /** cron から：ダッシュボードの中身を先に計算しておく */
 export async function warmDashboard(env, { sales = false } = {}) {
   try { await cachedToday(env, true); } catch (e) { console.error("warm today", e.message); }
-  if (sales) { try { await cachedSales(env, true); } catch (e) { console.error("warm sales", e.message); } }
+  if (sales) {
+    try { await cachedSales(env, true); } catch (e) { console.error("warm sales", e.message); }
+    try { await cachedKpi(env, true); } catch (e) { console.error("warm kpi", e.message); }
+  }
 }
 
 /** 名簿の再催促（Beds24経由でゲストへ。鍵の番号は送らない） */
@@ -224,6 +228,7 @@ export async function handleDash(request, env, url) {
     if (!allow(env, "DASH_ALLOW", u.userId)) return json({ error: "閲覧権限がありません" }, 403);
     const canSales = allow(env, "SALES_ALLOW", u.userId);
     if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await cachedSales(env, !!force)), canSales }); }
+    if (tab === "kpi") { if (!canSales) return json({ error: "経営指標の閲覧権限がありません" }, 403); return json({ ...(await cachedKpi(env, !!force)), canSales }); }
     if (tab === "week") return json({ ...(await weekData(env)), canSales });
     if (tab === "cal") { const st = /^\d{4}-\d{2}-\d{2}$/.test(start || "") ? start : formatDateYMD(addDays(new Date(), -2)); return json({ ...(await calendarData(env, st, 28)), canSales }); }
     if (tab === "detail") return json({ ...(await bookingDetail(env, bookingId)), canSales });
@@ -242,23 +247,58 @@ export async function handleDash(request, env, url) {
 const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>ダッシュボード</title>
 <style>
-body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:#f4f4f4;color:#1a1a1a}
-.hdr{background:#fff;border-bottom:1px solid #d9d9d9;padding:14px 16px;font-size:17px;font-weight:700;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
-.hdr .tabs{display:flex;gap:6px}
-.hdr .tabs button{border:1px solid #1a1a1a;background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700}
-.hdr .tabs button.on{background:#1a1a1a;color:#fff}
+:root{--red:#c8102e;--ink:#1a1a1a;--mut:#6b6b6b;--bg:#f6f4ef;--line:#e6e2da}
+body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+.hdr{background:#fff;border-bottom:1px solid var(--line);padding:10px 12px 8px;position:sticky;top:0;z-index:5}
+.hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:17px;font-weight:700}
+.hdr .top small{font-weight:400;color:var(--mut);font-size:11px}
+.hdr .tabs{display:flex;gap:6px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.hdr .tabs::-webkit-scrollbar{display:none}
+.hdr .tabs button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;color:var(--ink)}
+.hdr .tabs button.on{background:var(--red);border-color:var(--red);color:#fff}
+#refresh{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px}
+.sec{font-size:11px;letter-spacing:.12em;color:var(--red);font-weight:700;margin:6px 0 -6px 2px}
+.sec+.h{font-size:16px;font-weight:700;margin:8px 0 0 2px}.h small{font-weight:400;color:var(--mut);font-size:11px;margin-left:6px}
+.cards2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.kc.hi{border:2px solid var(--red)}
+.kc .t{font-size:11px;color:var(--mut)}.kc .v{font-size:26px;font-weight:800;margin:2px 0}.kc .v small{font-size:13px;font-weight:700}.kc.hi .v{color:var(--red)}
+.kc .d{font-size:11px;color:var(--mut)}.up{color:#1e7a3c}.dn{color:var(--red)}
+.chart{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+.chart svg{width:100%;height:auto;display:block}
+.lg{display:flex;gap:12px;font-size:11px;color:var(--mut);padding:0 2px 6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.tbl{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tbl table{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th,.tbl td{padding:8px 6px;border-bottom:1px solid #eee;text-align:right;vertical-align:top}
+.tbl th{background:#faf8f4;color:var(--mut);font-weight:700;font-size:11px}
+.tbl td:first-child,.tbl th:first-child{text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1}
+.tbl td .s,.tbl th .s{display:block;font-size:10px;font-weight:400}
+.tbl tr.tot td{background:#fcfbf8;font-weight:700}
+.tbl .cur td{background:#fff7f8}
+.seg{display:flex;gap:6px;margin:4px 0}.seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700}.seg button.on{background:var(--red);border-color:var(--red);color:#fff}
+.rank{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:5px;color:#fff;font-weight:800;text-align:center;font-size:12px}
+.rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:var(--red)}
+.hl{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6}
+.hl .tag{display:inline-block;background:var(--ink);color:#fff;font-size:10px;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.hl p{margin:6px 0}
+.pace .row2{display:grid;grid-template-columns:62px 1fr 92px;gap:8px;align-items:center;font-size:12px;padding:6px 0;border-bottom:1px solid #eee}
+.pace .bars{position:relative;height:18px}.pace .bars i{position:absolute;left:0;height:7px;border-radius:2px}.pace .bars .b1{top:0;background:var(--red)}.pace .bars .b2{top:10px;background:#d9d4ca}
+.pace .pv{text-align:right;font-weight:800}.pace .pv small{display:block;font-weight:400;color:var(--mut);font-size:10px}
+.heat td{text-align:center;font-weight:700}
+.note{font-size:11px;color:var(--mut);padding:0 4px}
 .wrap{padding:12px;max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.wrap.kpiwrap{gap:10px}
 .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .kpi div{background:#fff;border-radius:10px;padding:10px 6px;text-align:center}
 .kpi b{display:block;font-size:24px}
 .kpi small{font-size:11px;color:#6b6b6b}
-.kpi .warn{border:2px solid #c0392b}.kpi .warn b,.kpi .warn small{color:#c0392b}
+.kpi .warn{border:2px solid var(--red)}.kpi .warn b,.kpi .warn small{color:var(--red)}
 .card{background:#fff;border-radius:10px;overflow:hidden}
 .card h3{margin:0;padding:10px 14px;font-size:13px;border-bottom:1px solid #e5e5e5}
 .row{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #e5e5e5;font-size:13px}
 .row:last-child{border-bottom:0}
 .row b{display:block}
-.red{color:#c0392b}.green{color:#1e7a3c}.muted{color:#6b6b6b}
+.red{color:var(--red)}.green{color:#1e7a3c}.muted{color:#6b6b6b}
 .btn{min-height:44px;padding:0 12px;border:1px solid #1a1a1a;background:#fff;border-radius:8px;font-size:12px;font-weight:700}
 .btn.dark{background:#1a1a1a;color:#fff}
 .grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;font-size:13px;padding:9px 14px;border-bottom:1px solid #e5e5e5;gap:4px}
@@ -267,7 +307,7 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .foot{background:#fff;border-radius:10px;padding:10px 14px;font-size:12px;color:#6b6b6b;display:flex;justify-content:space-between;gap:8px}
 .nav{display:flex;gap:8px}
 .nav button{flex:1;min-height:44px;border:1px solid #1a1a1a;background:#fff;border-radius:8px;font-size:13px;font-weight:700}
-.nav button.on{background:#1a1a1a;color:#fff}
+.nav button.on{background:var(--red);border-color:var(--red);color:#fff}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:6px 4px;border-bottom:1px solid #eee;text-align:right}
 td:first-child,th:first-child{text-align:left}
@@ -304,29 +344,95 @@ td:first-child,th:first-child{text-align:left}
 .msg small{display:block;color:#6b6b6b;font-size:10px}
 .sub{padding:0 14px 8px}
 </style></head><body>
-<div class="hdr"><span id="title">今日</span><div class="tabs"><button id="refresh" style="display:none" aria-label="最新に更新">更新</button><button id="t-cal">カレンダー</button><button id="t-sales" style="display:none">売上</button></div></div>
+<div class="hdr"><div class="top"><span><span id="title">今日</span> <small id="sub"></small></span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
+<div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button></div></div>
 <div class="cnt" id="cnt" style="display:none"></div>
 <div class="wrap" id="app">読み込み中…</div>
 <div id="sheet"></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
-const LIFF_ID="__LIFF_ID__";let idToken=null,cur='today',calStart=null;
+const LIFF_ID="__LIFF_ID__";let idToken=null,cur='today',calStart=null,kpiCache=null,kpiSub='money';
+const KPI_TABS=['overview','kpi','props','pace'];
 const yen=n=>'¥'+Number(n||0).toLocaleString();
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function api(body){const r=await fetch('/liff/dash/data',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,...body})});return r.json();}
 async function load(tab,force){
   cur=tab;const app=document.getElementById('app');app.textContent='読み込み中…';
-  const d=await api({tab,force:!!force,start:tab==='cal'?calStart:undefined});
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  app.classList.toggle('kpiwrap',KPI_TABS.includes(tab));
+  let d;
+  if(KPI_TABS.includes(tab)){ if(!kpiCache||force){kpiCache=await api({tab:'kpi',force:!!force});} d=kpiCache; }
+  else d=await api({tab,force:!!force,start:tab==='cal'?calStart:undefined});
   if(d.error){app.innerHTML='<p class="red">'+esc(d.error)+'</p>';return;}
-  if(d.canSales)document.getElementById('t-sales').style.display='';
-  document.getElementById('title').textContent=tab==='sales'?'売上':tab==='week'?'今週':tab==='cal'?'カレンダー':(tab==='tomorrow'?'明日　':'今日　')+(d.label||'');
-  app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):renderDay(d,tab);
+  if(d.canSales)document.querySelectorAll('#tabs .sales').forEach(b=>b.style.display='');
+  const titles={today:'今日　'+(d.label||''),tomorrow:'明日　'+(d.label||''),week:'今週',cal:'カレンダー',overview:'概要',kpi:'月別のKPI',props:'物件',pace:'予約ペース',sales:'売上'};
+  document.getElementById('title').textContent=titles[tab]||tab;
+  document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 時点・Beds24から集計':'';
+  app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
+  if(tab==='kpi'){app.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{kpiSub=b.dataset.seg;load('kpi');});}
   app.querySelectorAll('[data-remind]').forEach(b=>b.onclick=async()=>{if(!confirm(b.dataset.guest+'様に名簿の再催促を送りますか？'))return;b.disabled=true;b.textContent='送信中…';const r=await fetch('/liff/dash/remind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,bookingId:b.dataset.remind})});const j=await r.json();b.textContent=j.ok?'送信済':'失敗';});
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>load(b.dataset.nav));
   const rf=document.getElementById('refresh');rf.style.display='';rf.onclick=()=>load(cur,true);
 }
+const man=n=>(Math.round((n||0)/1000)/10).toLocaleString()+'万円';
+const yoy=(v,unit='%')=>v==null?'<span class="muted">—</span>':'<span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'')+v+unit+'</span>';
+function barChart(ms){ // 月別売上：前年(灰)・実績(赤)・予約済み(薄赤)
+  const W=520,H=190,pl=8,pb=26,pt=8;const max=Math.max(1,...ms.map(m=>Math.max(m.rev,m.prev)));const n=ms.length,gw=(W-pl*2)/n,bw=Math.max(4,gw*0.33);
+  let g='';ms.forEach((m,i)=>{const x=pl+i*gw;const h1=(m.prev/max)*(H-pb-pt),h2=(m.rev/max)*(H-pb-pt);
+    g+='<rect x="'+(x+gw*0.12)+'" y="'+(H-pb-h1)+'" width="'+bw+'" height="'+h1+'" fill="#d9d4ca"/>';
+    g+='<rect x="'+(x+gw*0.12+bw+2)+'" y="'+(H-pb-h2)+'" width="'+bw+'" height="'+h2+'" fill="'+(m.future?'#f0a3ae':'#c8102e')+'"'+(m.future?' stroke="#c8102e" stroke-dasharray="2 2"':'')+'/>';
+    if(m.isCurrent)g+='<line x1="'+(x+gw/2)+'" x2="'+(x+gw/2)+'" y1="0" y2="'+(H-pb+4)+'" stroke="#1a1a1a" stroke-dasharray="3 3" opacity=".5"/>';
+    g+='<text x="'+(x+gw/2)+'" y="'+(H-8)+'" font-size="10" text-anchor="middle" fill="#6b6b6b">'+m.label.replace('月','')+(m.ym.endsWith('-01')?'<tspan x="'+(x+gw/2)+'" dy="0" font-size="0"></tspan>':'')+'</text>';});
+  return '<svg viewBox="0 0 '+W+' '+H+'">'+g+'</svg>';}
+function lineChart(ms){const W=520,H=150,pl=8,pb=22,pt=8;const pts=(k)=>ms.map((m,i)=>[pl+(i+0.5)*((W-pl*2)/ms.length),H-pb-(Math.min(100,m[k]||0)/100)*(H-pb-pt)]);
+  const path=a=>a.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const a=pts('occ').filter((p,i)=>!ms[i].future),b=pts('prevOcc');
+  let g='';[25,50,75,100].forEach(v=>{const y=H-pb-(v/100)*(H-pb-pt);g+='<line x1="'+pl+'" x2="'+(W-pl)+'" y1="'+y+'" y2="'+y+'" stroke="#eee"/><text x="'+(W-pl)+'" y="'+(y-2)+'" font-size="9" text-anchor="end" fill="#aaa">'+v+'%</text>';});
+  g+='<path d="'+path(b)+'" fill="none" stroke="#c9c3b8" stroke-width="2"/><path d="'+path(a)+'" fill="none" stroke="#c8102e" stroke-width="2.5"/>';
+  a.forEach(p=>g+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="#c8102e"/>');
+  ms.forEach((m,i)=>g+='<text x="'+(pl+(i+0.5)*((W-pl*2)/ms.length))+'" y="'+(H-6)+'" font-size="10" text-anchor="middle" fill="#6b6b6b">'+m.label.replace('月','')+'</text>');
+  return '<svg viewBox="0 0 '+W+' '+H+'">'+g+'</svg>';}
+function renderOverview(d){const o=d.overview;
+  let h='<div class="cards2"><div class="kc hi"><div class="t">'+esc(o.month)+'の宿泊売上（予約済み）</div><div class="v">'+man(o.revenue)+'</div><div class="d">前年同時点 '+yoy(o.revenueYoY)+'<br>・前年の着地 '+man(o.revenuePrevFinal)+'</div></div>';
+  h+='<div class="kc"><div class="t">'+esc(o.month)+'の稼働率</div><div class="v">'+o.occ+'<small>%</small></div><div class="d">前年同月 '+yoy(o.occYoY,'pt')+'</div></div>';
+  h+='<div class="kc"><div class="t">'+esc(o.month)+'の平均単価（ADR）</div><div class="v">'+Number(o.adr).toLocaleString()+'<small>円</small></div><div class="d">前年 '+yoy(o.adrYoY)+'</div></div>';
+  h+='<div class="kc"><div class="t">1室1日あたり売上（RevPAR）</div><div class="v">'+Number(o.revpar).toLocaleString()+'<small>円</small></div><div class="d">前年同月 '+yoy(o.revparYoY)+'</div></div></div>';
+  h+='<div class="kc" style="width:auto"><div class="t">'+esc(o.ytdLabel)+'</div><div class="v">'+man(o.ytd)+'</div><div class="d">前年同期 '+yoy(o.ytdYoY)+'</div></div>';
+  h+='<div class="sec">HIGHLIGHTS</div><div class="h">今月の要点</div><div class="hl">'+(d.highlights.length?d.highlights.map(x=>'<p><span class="tag">'+esc(x.tag)+'</span>'+esc(x.text)+'</p>').join(''):'<p class="muted">特記事項なし</p>')+'</div>';
+  h+='<div class="sec">REVENUE</div><div class="h">月別の宿泊売上<small>過去12か月の実績 と これから5か月の予約済み</small></div><div class="chart"><div class="lg"><span><i style="background:#c8102e"></i>今年（実績）</span><span><i style="background:#f0a3ae;border:1px dashed #c8102e"></i>予約済み（これから増えます）</span><span><i style="background:#d9d4ca"></i>前年の実績</span></div>'+barChart(d.monthly)+'</div>';
+  h+='<div class="sec">OCCUPANCY</div><div class="h">稼働率<small>月別・前年との比較</small></div><div class="chart"><div class="lg"><span><i style="background:#c8102e"></i>今年</span><span><i style="background:#c9c3b8"></i>前年</span></div>'+lineChart(d.monthly)+'</div>';
+  h+='<p class="note">到着日ベース・キャンセル除く・Beds24の料金（清掃費込み）。市場比較・値付け記録はPriceLabs接続後に追加。</p>';
+  return h;}
+function renderKpi(d){
+  const ms=d.series;const money=kpiSub==='money';
+  let h='<div class="seg"><button data-seg="money" class="'+(money?'on':'')+'">売上・稼働率・ADR・RevPAR</button><button data-seg="vol" class="'+(money?'':'on')+'">泊数・人数・1泊の件数・リードタイム</button></div>';
+  const metrics=money?[['売上','rev',v=>man(v),(c,p)=>yoy(p&&p.rev?Math.round((c.rev/p.rev-1)*1000)/10:null)],['稼働率','occ',v=>v+'%',(c,p)=>yoy(p?Math.round((c.occ-p.occ)*10)/10:null,'pt')],['ADR','adr',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.adr?Math.round((c.adr/p.adr-1)*1000)/10:null)],['RevPAR','revpar',v=>'¥'+Number(v).toLocaleString(),(c,p)=>yoy(p&&p.revpar?Math.round((c.revpar/p.revpar-1)*1000)/10:null)]]
+    :[['泊数','nights',v=>v,(c,p)=>yoy(p&&p.nights?Math.round((c.nights/p.nights-1)*1000)/10:null)],['平均人数','pax',v=>v+'人',(c,p)=>yoy(p?Math.round((c.pax-p.pax)*10)/10:null,'人')],['1泊の件数','oneNight',v=>v+'%',(c,p)=>yoy(p?c.oneNight-p.oneNight:null,'pt')],['リードタイム','lead',v=>v==null?'—':v+'日',(c,p)=>yoy(p&&p.lead!=null&&c.lead!=null?c.lead-p.lead:null,'日')]];
+  const rows=[['合計',null],...d.props.map(p=>[p,p])];
+  h+='<div class="tbl" style="overflow-x:auto"><table><thead><tr><th>物件</th><th>指標</th>'+ms.map(m=>'<th'+(m.isCurrent?' style="color:#c8102e"':'')+'>'+m.label+'<span class="s">'+m.year+(m.future?' 予約済':'')+'</span></th>').join('')+'</tr></thead><tbody>';
+  for(const [name,key] of rows){metrics.forEach(([ml,mk,fmt,cmp],i)=>{h+='<tr'+(key===null?' class="tot"':'')+'>'+(i===0?'<td rowspan="'+metrics.length+'">'+esc(name)+'</td>':'')+'<td style="text-align:left;color:#6b6b6b">'+ml+'</td>';
+    for(const m of ms){const c=key===null?m.total:m.props[key];const p=c&&c.prev;h+='<td>'+(c?fmt(c[mk]):'—')+'<span class="s">'+(c?cmp(c,p):'')+'</span></td>';}
+    h+='</tr>';});}
+  h+='</tbody></table></div><p class="note">左右にスクロールできます。今月より右は「予約済み」で、今後増えます。前年比は前年同月の最終実績との比較。</p>';
+  return h;}
+function renderProps(d){
+  let h='<div class="sec">PROPERTIES</div><div class="h">物件別の成績<small>直近3か月</small></div><div class="tbl"><table><tr><th>物件</th><th>ランク</th><th>稼働</th><th>ADR</th><th>RevPAR</th><th>売上/前年</th></tr>';
+  for(const p of d.propPerf)h+='<tr><td>'+esc(p.prop)+'</td><td><span class="rank r'+p.rank+'">'+p.rank+'</span></td><td>'+p.occ+'%</td><td>¥'+p.adr.toLocaleString()+'</td><td>¥'+p.revpar.toLocaleString()+'</td><td>'+man(p.rev)+'<span class="s">'+yoy(p.yoy)+'</span></td></tr>';
+  h+='</table></div><p class="note">ランクは直近3か月の稼働率：A 80%以上・B 65%以上・C 50%以上・D それ未満</p>';
+  const tot=d.channels.reduce((a,c)=>a+c.rev,0)||1;const col={airbnb:'#e0455f',booking:'#2a5bd7',agoda:'#8e44ad',expedia:'#f0a202',rakuten:'#b10e1f',direct:'#7f8c8d'};
+  h+='<div class="sec">CHANNELS</div><div class="h">販売チャネル<small>直近12か月の売上</small></div><div class="chart"><div style="display:flex;height:14px;border-radius:4px;overflow:hidden;margin-bottom:8px">'+d.channels.map(c=>'<i style="flex:'+c.rev+';background:'+(col[c.key]||'#999')+'"></i>').join('')+'</div><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:#6b6b6b"><th style="text-align:left;font-weight:400">チャネル</th><th style="text-align:right;font-weight:400">売上</th><th style="text-align:right;font-weight:400">構成比</th><th style="text-align:right;font-weight:400">手数料率</th></tr>'+d.channels.map(c=>'<tr><td style="padding:5px 0"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+(col[c.key]||'#999')+';margin-right:6px"></i>'+esc(c.label)+'</td><td style="text-align:right">¥'+c.rev.toLocaleString()+'</td><td style="text-align:right">'+c.share+'%</td><td style="text-align:right">'+c.fee+'%</td></tr>').join('')+'<tr style="font-weight:700;border-top:1px solid #eee"><td style="padding-top:6px">合計</td><td style="text-align:right">¥'+tot.toLocaleString()+'</td><td style="text-align:right">100%</td><td style="text-align:right">'+d.feeAvg+'%</td></tr></table></div><p class="note">手数料率は目安の設定値（Airbnb 15.5%・Booking 15%・Agoda 17%）。実額は各OTAの明細で確認。</p>';
+  return h;}
+function renderPace(d){
+  let h='<div class="sec">PACE</div><div class="h">これから先の予約ペース<small>前年の同じ日と比べて</small></div><div class="lg"><span><i style="background:#c8102e"></i>今の予約</span><span><i style="background:#d9d4ca"></i>前年の同じ時点</span></div><div class="pace tbl" style="padding:4px 12px">';
+  const max=Math.max(1,...d.pace.map(r=>Math.max(r.now,r.prevAsOf)));
+  for(const r of d.pace){h+='<div class="row2"><div>'+esc(r.label)+'</div><div class="bars"><i class="b1" style="width:'+(r.now/max*100)+'%"></i><i class="b2" style="width:'+(r.prevAsOf/max*100)+'%"></i></div><div class="pv '+(r.pace==null?'':r.pace>=100?'up':'dn')+'">'+(r.pace==null?'—':r.pace+'%')+'<small>'+man(r.now)+' / '+man(r.prevAsOf)+'</small></div></div>';}
+  h+='</div><p class="note">100%を下回る月は前年より売れ行きが遅い月です。前年の着地ではなく「前年の同じ日時点の予約済み」と比べています。</p>';
+  h+='<div class="sec">BY PROPERTY</div><div class="h">物件ごとの予約ペース<small>前年同時点を100%として</small></div><div class="tbl" style="overflow-x:auto"><table class="heat"><tr><th style="text-align:left">物件</th>'+d.pace.map(r=>'<th>'+esc(r.label.slice(5))+'<span class="s">'+r.label.slice(0,4)+'</span></th>').join('')+'</tr>';
+  for(const p of d.props){h+='<tr><td style="text-align:left">'+esc(p)+'</td>'+d.pace.map(r=>{const v=r.byProp[p];const bg=v==null?'#fff':v>=110?'#e3f1e7':v>=100?'#f1f7f2':v>=90?'#fff3cd':'#f9d6dc';return '<td style="background:'+bg+'">'+(v==null?'—':v+'%')+'</td>';}).join('')+'</tr>';}
+  h+='</table></div><p class="note">90%未満は赤。遅れている物件×月から、価格・最低泊数・プロモーションを見直す。値付けの記録はPriceLabs接続後に追加。</p>';
+  return h;}
 function renderDay(d,tab){
   const k=d.kpi;let h='<div class="kpi"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div><div class="'+(k.registryMissing?'warn':'')+'"><b>'+k.registryMissing+'</b><small>名簿未</small></div></div>';
   h+='<div class="card" id="todo"><h3>要対応'+(d.todo.length?'':'　<span class="muted">なし</span>')+'</h3>';
@@ -402,7 +508,7 @@ function renderSales(d){
   h+='<div class="nav"><button data-nav="today">今日に戻る</button></div>';
   return h;
 }
-document.getElementById('t-sales').onclick=()=>load('sales');document.getElementById('t-cal').onclick=()=>load('cal');
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>load(b.dataset.tab));
 (async()=>{try{await liff.init({liffId:LIFF_ID});if(!liff.isLoggedIn()){liff.login();return;}idToken=liff.getIDToken();
   const q=new URLSearchParams(location.search).get('tab')||'today';await load(q);}catch(e){document.getElementById('app').innerHTML='<p class="red">エラー: '+esc(e.message)+'</p>';}})();
 </script></body></html>`;
