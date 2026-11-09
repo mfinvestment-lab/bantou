@@ -100,7 +100,7 @@ ${exText}
 - ただし質問・要望・不満・トラブルが1つでも含まれていれば needsReply は true
 
 ## 出力形式（JSONのみ、前後に文章を付けない。reason は60字以内）
-{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"usedFaq":[根拠にした登録FAQの番号。使っていなければ空配列],"reply":"日本語の返信本文","reason":"根拠にしたFAQ/返信例の番号と判断理由（日本語・60字以内）"}`;
+{"category":"question|request|complaint|thanks|info|other","needsReply":true|false,"confidence":0.0〜1.0,"needsHuman":true|false,"usedFaq":[根拠にした登録FAQの番号。使っていなければ空配列],"guestJa":"ゲストのメッセージの日本語訳（原文が日本語なら空文字）","reply":"日本語の返信本文","reason":"根拠にしたFAQ/返信例の番号と判断理由（日本語・60字以内）"}`;
 }
 
 function buildUser({ booking, thread, guestMessage }) {

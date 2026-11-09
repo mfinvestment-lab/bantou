@@ -176,7 +176,9 @@ export function buildCardMessage(card) {
     ...meta,
     sep,
     txt("ゲストの原文", { size: "xxs", color: "#6b6b6b", margin: "md" }),
-    { type: "box", layout: "vertical", backgroundColor: "#f4f4f4", cornerRadius: "8px", paddingAll: "10px", contents: [txt(card.guestMessage)] },
+    { type: "box", layout: "vertical", backgroundColor: "#f4f4f4", cornerRadius: "8px", paddingAll: "10px", contents: [
+      ...(d.guestJa && d.guestJa.trim() ? [txt(d.guestJa, { weight: "bold" }), txt(card.guestMessage, { size: "xs", color: "#6b6b6b", margin: "sm" })] : [txt(card.guestMessage)])
+    ] },
     sep,
     txt(d.needsHuman ? "要確認の理由" : d.ack ? "一言返し案（日本語で送信）" : "返信案（日本語で送信・OTAが翻訳）", { size: "xxs", color: "#6b6b6b", margin: "md" }),
     txt(d.needsHuman ? d.reason : d.reply),
