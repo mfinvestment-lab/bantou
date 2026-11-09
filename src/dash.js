@@ -124,11 +124,11 @@ export async function weekData(env) {
   return { from, to, days };
 }
 
-/** 売上タブ（先月〜4か月先、物件別、ADR） */
+/** 売上タブ（当月〜5か月先、物件別、ADR） */
 export async function salesData(env) {
   const token = await getToken(env);
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-  const months = [-1, 0, 1, 2, 3, 4].map(k => monthRange(new Date(now.getFullYear(), now.getMonth() + k, 1)));
+  const months = [0, 1, 2, 3, 4, 5].map(k => monthRange(new Date(now.getFullYear(), now.getMonth() + k, 1))); // 当月〜5か月先
   const { names, order } = await allProperties(env, token);
   const lists = await Promise.all(months.map(m => getBookings(token, `arrivalFrom=${m.from}&arrivalTo=${m.to}`)));
   const out = [];
@@ -345,7 +345,7 @@ td:first-child,th:first-child{text-align:left}
 .sub{padding:0 14px 8px}
 </style></head><body>
 <div class="hdr"><div class="top"><span><span id="title">今日</span> <small id="sub"></small></span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
-<div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button></div></div>
+<div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button><button data-tab="sales" class="sales" style="display:none">売上</button></div></div>
 <div class="cnt" id="cnt" style="display:none"></div>
 <div class="wrap" id="app">読み込み中…</div>
 <div id="sheet"></div>
