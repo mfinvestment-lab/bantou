@@ -249,21 +249,23 @@ const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta n
 <style>
 :root{--red:#2a4d69;--ink:#1a1a1a;--mut:#6b6b6b;--bg:#f3f5f7;--line:#dfe4ea;--acc2:#9fb3c8}
 body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
-.hdr{background:#fff;border-bottom:1px solid var(--line);padding:10px 12px 8px;position:sticky;top:0;z-index:5}
-.hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:17px;font-weight:700}
-.hdr .top small{font-weight:400;color:var(--mut);font-size:11px}
-.hdr .tabs{display:flex;gap:6px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.hdr{background:var(--bg);padding:10px 12px 8px;position:sticky;top:0;z-index:5}
+.hdr .brand{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mut);padding:0 2px 6px}
+.hdr .brand b{font-size:15px;color:var(--red);letter-spacing:.02em;margin-right:6px}
+.hdr .brand .upd{font-size:11px;text-align:right}
+.hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:22px;font-weight:800;padding:0 2px}
+.hdr .tabs{display:flex;gap:4px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px}
 .hdr .tabs::-webkit-scrollbar{display:none}
-.hdr .tabs button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;color:var(--ink)}
-.hdr .tabs button.on{background:var(--red);border-color:var(--red);color:#fff}
+.hdr .tabs button{flex:1 0 auto;border:0;background:transparent;border-radius:9px;padding:9px 12px;font-size:14px;font-weight:700;color:var(--ink)}
+.hdr .tabs button.on{background:var(--red);color:#fff}
 #refresh{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px}
-.sec{font-size:11px;letter-spacing:.12em;color:var(--red);font-weight:700;margin:6px 0 -6px 2px}
-.sec+.h{font-size:16px;font-weight:700;margin:8px 0 0 2px}.h small{font-weight:400;color:var(--mut);font-size:11px;margin-left:6px}
+.sec{font-size:12px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:10px 0 -8px 2px}
+.sec+.h{font-size:20px;font-weight:800;margin:8px 0 0 2px}.h small{font-weight:400;color:var(--mut);font-size:12px;margin-left:6px;display:inline-block}
 .cards2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .kc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
 .kc.hi{border:2px solid var(--red)}
-.kc .t{font-size:11px;color:var(--mut)}.kc .v{font-size:26px;font-weight:800;margin:2px 0}.kc .v small{font-size:13px;font-weight:700}.kc.hi .v{color:var(--red)}
-.kc .d{font-size:11px;color:var(--mut)}.up{color:#1e7a3c}.dn{color:#c0392b}
+.kc .t{font-size:12px;color:var(--mut)}.kc .v{font-size:30px;font-weight:800;margin:4px 0 2px;letter-spacing:-.01em}.kc .v small{font-size:14px;font-weight:700;margin-left:2px}.kc.hi .v{color:var(--red)}
+.kc .d{font-size:12px;color:var(--mut);line-height:1.5}.up{color:#1e7a3c}.dn{color:#c0392b}
 .chart{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
 .chart svg{width:100%;height:auto;display:block}
 .lg{display:flex;gap:12px;font-size:11px;color:var(--mut);padding:0 2px 6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
@@ -280,18 +282,20 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .kt .pc{position:sticky;left:0;background:#fff;z-index:2;width:104px;min-width:104px;max-width:104px;box-sizing:border-box;white-space:normal;font-weight:800;border-right:1px solid var(--line)}.kt .pc small{display:block;font-weight:400;color:var(--mut);font-size:12px;margin-top:2px}
 .kt .mc{position:sticky;left:104px !important;background:#fff;z-index:2;color:var(--ink);font-weight:700;text-align:left;border-right:1px solid var(--line);min-width:72px}
 .kt tr.grp td{border-top:2px solid var(--line)}.kt tr.tot .pc,.kt tr.tot .mc{background:#f9fafb}.kt th.pc,.kt th.mc{background:#f6f8fa;z-index:3}.kt th.curcol,.kt td.curcol{background:#eef3f8}
-.rank{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:5px;color:#fff;font-weight:800;text-align:center;font-size:12px}
+.rank{display:inline-block;width:26px;height:26px;line-height:26px;border-radius:6px;color:#fff;font-weight:800;text-align:center;font-size:14px}
 .rA{background:#1e7a3c}.rB{background:#2a7a6f}.rC{background:#b36b00}.rD{background:#c0392b}
-.hl{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6}
-.hl .tag{display:inline-block;background:var(--ink);color:#fff;font-size:10px;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
-.hl p{margin:6px 0}
-.pace .row2{display:grid;grid-template-columns:62px 1fr 92px;gap:8px;align-items:center;font-size:12px;padding:6px 0;border-bottom:1px solid #eee}
-.pace .bars{position:relative;height:18px}.pace .bars i{position:absolute;left:0;height:7px;border-radius:2px}.pace .bars .b1{top:0;background:var(--red)}.pace .bars .b2{top:10px;background:#cfd8e3}
-.pace .pv{text-align:right;font-weight:800}.pace .pv small{display:block;font-weight:400;color:var(--mut);font-size:10px}
-.heat td{text-align:center;font-weight:700}
+.hl{display:flex;flex-direction:column;gap:8px}
+.hl p{margin:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.65}
+.hl .tag{display:inline-block;background:var(--ink);color:#fff;font-size:11px;border-radius:4px;padding:2px 7px;margin-right:8px;vertical-align:2px;font-weight:700}.hl .tag.w{background:#c0392b}
+.pace .row2{display:grid;grid-template-columns:70px 1fr 110px;gap:10px;align-items:center;font-size:15px;font-weight:700;padding:12px 0;border-bottom:1px solid #eee}.pace .row2:last-child{border-bottom:0}
+.pace .bars{position:relative;height:24px}.pace .bars i{position:absolute;left:0;height:9px;border-radius:2px}.pace .bars .b1{top:1px;background:var(--red)}.pace .bars .b2{top:14px;background:#cfd8e3}
+.pace .pv{text-align:right;font-weight:800;font-size:17px}.pace .pv small{display:block;font-weight:400;color:var(--mut);font-size:11px;margin-top:2px}
+.heat td{text-align:center;font-weight:800;font-size:15px}.heat th{text-align:center}
 .note{font-size:11px;color:var(--mut);padding:0 4px}
 .wrap{padding:12px;max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
-.wrap.kpiwrap{gap:10px}
+.wrap.kpiwrap{gap:12px}
+.kpiwrap .tbl{overflow-x:auto}.kpiwrap .tbl table{font-size:14px;min-width:100%}.kpiwrap .tbl th{font-size:12px;padding:10px 8px;white-space:nowrap}.kpiwrap .tbl td{padding:12px 8px;font-weight:700;white-space:nowrap}.kpiwrap .tbl td .s{font-size:12px;font-weight:600}
+.kpiwrap .lg{font-size:12px}.kpiwrap .note{font-size:12px;line-height:1.6}
 .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .kpi div{background:#fff;border-radius:10px;padding:10px 6px;text-align:center}
 .kpi b{display:block;font-size:24px}
@@ -348,7 +352,8 @@ td:first-child,th:first-child{text-align:left}
 .msg small{display:block;color:#6b6b6b;font-size:10px}
 .sub{padding:0 14px 8px}
 </style></head><body>
-<div class="hdr"><div class="top"><span><span id="title">今日</span> <small id="sub"></small></span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
+<div class="hdr"><div class="brand"><div><b>MFInvestment</b><span>ダッシュボード</span></div><div class="upd" id="sub">Beds24から自動集計</div></div>
+<div class="top"><span id="title">今日</span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
 <div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button><button data-tab="sales" class="sales" style="display:none">売上</button></div></div>
 <div class="cnt" id="cnt" style="display:none"></div>
 <div class="wrap" id="app">読み込み中…</div>
@@ -371,7 +376,7 @@ async function load(tab,force){
   if(d.canSales)document.querySelectorAll('#tabs .sales').forEach(b=>b.style.display='');
   const titles={today:'今日　'+(d.label||''),tomorrow:'明日　'+(d.label||''),week:'今週',cal:'カレンダー',overview:'概要',kpi:'月別のKPI',props:'物件',pace:'予約ペース',sales:'売上'};
   document.getElementById('title').textContent=titles[tab]||tab;
-  document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 時点・Beds24から集計':'';
+  document.getElementById('sub').textContent=KPI_TABS.includes(tab)?(d.at||'')+' 更新・Beds24から自動集計':(tab==='sales'&&d.at?d.at+' 時点':'Beds24から自動集計');
   app.innerHTML=tab==='sales'?renderSales(d):tab==='week'?renderWeek(d):tab==='cal'?renderCal(d):tab==='overview'?renderOverview(d):tab==='kpi'?renderKpi(d):tab==='props'?renderProps(d):tab==='pace'?renderPace(d):renderDay(d,tab);
   if(tab==='today')renderCounters(d.kpi);else document.getElementById('cnt').style.display='none';
   if(tab==='cal'){app.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>openDetail(b.dataset.bk));app.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{calStart=b.dataset.cal;load('cal');});setTimeout(()=>{const t=app.querySelector('.hd.today');if(t)app.querySelector('.scroll').scrollLeft=Math.max(0,t.offsetLeft-120);},0);}
@@ -404,7 +409,7 @@ function renderOverview(d){const o=d.overview;
   h+='<div class="kc"><div class="t">'+esc(o.month)+'の平均単価（ADR）</div><div class="v">'+Number(o.adr).toLocaleString()+'<small>円</small></div><div class="d">前年 '+yoy(o.adrYoY)+'</div></div>';
   h+='<div class="kc"><div class="t">1室1日あたり売上（RevPAR）</div><div class="v">'+Number(o.revpar).toLocaleString()+'<small>円</small></div><div class="d">前年同月 '+yoy(o.revparYoY)+'</div></div></div>';
   h+='<div class="kc" style="width:auto"><div class="t">'+esc(o.ytdLabel)+'</div><div class="v">'+man(o.ytd)+'</div><div class="d">前年同期 '+yoy(o.ytdYoY)+'</div></div>';
-  h+='<div class="sec">HIGHLIGHTS</div><div class="h">今月の要点</div><div class="hl">'+(d.highlights.length?d.highlights.map(x=>'<p><span class="tag">'+esc(x.tag)+'</span>'+esc(x.text)+'</p>').join(''):'<p class="muted">特記事項なし</p>')+'</div>';
+  h+='<div class="sec">HIGHLIGHTS</div><div class="h">今月の要点</div><div class="hl">'+(d.highlights.length?d.highlights.map(x=>'<p><span class="tag'+(/注意|稼働/.test(x.tag)?' w':'')+'">'+esc(x.tag)+'</span>'+esc(x.text)+'</p>').join(''):'<p class="muted">特記事項なし</p>')+'</div>';
   h+='<div class="sec">REVENUE</div><div class="h">月別の宿泊売上<small>過去12か月の実績 と これから5か月の予約済み</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年（実績）</span><span><i style="background:#9fb3c8;border:1px dashed #2a4d69"></i>予約済み（これから増えます）</span><span><i style="background:#cfd8e3"></i>前年の実績</span></div>'+barChart(d.monthly)+'</div>';
   h+='<div class="sec">OCCUPANCY</div><div class="h">稼働率<small>月別・前年との比較</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年</span><span><i style="background:#cfd8e3"></i>前年</span></div>'+lineChart(d.monthly)+'</div>';
   h+='<p class="note">到着日ベース・キャンセル除く・Beds24の料金（清掃費込み）。市場比較・値付け記録はPriceLabs接続後に追加。</p>';
@@ -426,7 +431,7 @@ function renderProps(d){
   for(const p of d.propPerf)h+='<tr><td>'+esc(p.prop)+'</td><td><span class="rank r'+p.rank+'">'+p.rank+'</span></td><td>'+p.occ+'%</td><td>¥'+p.adr.toLocaleString()+'</td><td>¥'+p.revpar.toLocaleString()+'</td><td>'+man(p.rev)+'<span class="s">'+yoy(p.yoy)+'</span></td></tr>';
   h+='</table></div><p class="note">ランクは直近3か月の稼働率：A 80%以上・B 65%以上・C 50%以上・D それ未満</p>';
   const tot=d.channels.reduce((a,c)=>a+c.rev,0)||1;const col={airbnb:'#e0455f',booking:'#2a5bd7',agoda:'#8e44ad',expedia:'#f0a202',rakuten:'#b10e1f',direct:'#7f8c8d'};
-  h+='<div class="sec">CHANNELS</div><div class="h">販売チャネル<small>直近12か月の売上</small></div><div class="chart"><div style="display:flex;height:14px;border-radius:4px;overflow:hidden;margin-bottom:8px">'+d.channels.map(c=>'<i style="flex:'+c.rev+';background:'+(col[c.key]||'#999')+'"></i>').join('')+'</div><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:#6b6b6b"><th style="text-align:left;font-weight:400">チャネル</th><th style="text-align:right;font-weight:400">売上</th><th style="text-align:right;font-weight:400">構成比</th><th style="text-align:right;font-weight:400">手数料率</th></tr>'+d.channels.map(c=>'<tr><td style="padding:5px 0"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+(col[c.key]||'#999')+';margin-right:6px"></i>'+esc(c.label)+'</td><td style="text-align:right">¥'+c.rev.toLocaleString()+'</td><td style="text-align:right">'+c.share+'%</td><td style="text-align:right">'+c.fee+'%</td></tr>').join('')+'<tr style="font-weight:700;border-top:1px solid #eee"><td style="padding-top:6px">合計</td><td style="text-align:right">¥'+tot.toLocaleString()+'</td><td style="text-align:right">100%</td><td style="text-align:right">'+d.feeAvg+'%</td></tr></table></div><p class="note">手数料率は目安の設定値（Airbnb 15.5%・Booking 15%・Agoda 17%）。実額は各OTAの明細で確認。</p>';
+  h+='<div class="sec">CHANNELS</div><div class="h">販売チャネル<small>直近12か月の売上</small></div><div class="chart"><div style="display:flex;height:14px;border-radius:4px;overflow:hidden;margin-bottom:8px">'+d.channels.map(c=>'<i style="flex:'+c.rev+';background:'+(col[c.key]||'#999')+'"></i>').join('')+'</div><table style="width:100%;font-size:15px;border-collapse:collapse"><tr style="color:#6b6b6b;font-size:12px"><th style="text-align:left;font-weight:400">チャネル</th><th style="text-align:right;font-weight:400">売上</th><th style="text-align:right;font-weight:400">構成比</th><th style="text-align:right;font-weight:400">手数料率</th></tr>'+d.channels.map(c=>'<tr><td style="padding:9px 0;font-weight:700"><i style="display:inline-block;width:11px;height:11px;border-radius:2px;background:'+(col[c.key]||'#999')+';margin-right:6px"></i>'+esc(c.label)+'</td><td style="text-align:right">¥'+c.rev.toLocaleString()+'</td><td style="text-align:right">'+c.share+'%</td><td style="text-align:right">'+c.fee+'%</td></tr>').join('')+'<tr style="font-weight:700;border-top:1px solid #eee"><td style="padding-top:6px">合計</td><td style="text-align:right">¥'+tot.toLocaleString()+'</td><td style="text-align:right">100%</td><td style="text-align:right">'+d.feeAvg+'%</td></tr></table></div><p class="note">手数料率は目安の設定値（Airbnb 15.5%・Booking 15%・Agoda 17%）。実額は各OTAの明細で確認。</p>';
   return h;}
 function renderPace(d){
   let h='<div class="sec">PACE</div><div class="h">これから先の予約ペース<small>前年の同じ日と比べて</small></div><div class="lg"><span><i style="background:#2a4d69"></i>今の予約</span><span><i style="background:#cfd8e3"></i>前年の同じ時点</span></div><div class="pace tbl" style="padding:4px 12px">';
