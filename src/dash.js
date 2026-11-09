@@ -57,11 +57,13 @@ export async function dayData(env, date) {
   const cleaning = await todayCleaningStatus(env, date);
   const { names, order } = await allProperties(env, token);
   const ok = b => b.status !== "cancelled";
-  const [arr, dep] = await Promise.all([
+  const next = formatDateYMD(addDays(new Date(Date.parse(date + "T00:00:00Z")), 1));
+  const [arr, dep, stays] = await Promise.all([
     getBookings(token, `arrivalFrom=${date}&arrivalTo=${date}&includeInfoItems=true`),
-    getBookings(token, `departureFrom=${date}&departureTo=${date}`)
+    getBookings(token, `departureFrom=${date}&departureTo=${date}`),
+    getBookings(token, `arrivalTo=${date}&departureFrom=${next}`) // その夜に滞在中（到着≤当日、出発≥翌日）
   ]);
-  const gA = groupBy(arr.filter(ok), names), gD = groupBy(dep.filter(ok), names);
+  const gA = groupBy(arr.filter(ok), names), gD = groupBy(dep.filter(ok), names), gS = groupBy(stays.filter(ok && (b => b.status !== "cancelled" && b.arrival < date)), names);
   const rows = [];
   const kpi = { in: 0, out: 0, clean: 0, registryMissing: 0, reply: 0, cleanPending: 0 };
   const todo = [];
@@ -81,8 +83,11 @@ export async function dayData(env, date) {
       if (clean.state === "pending" || clean.state === "working") kpi.cleanPending++;
     }
     const inText = ins.length ? (c?.early?.time && c.early.results?.some(r => !r.test) ? `${c.early.time}〜` : (CHECKIN[name] || "—")) : (outs.length ? "—" : "—");
-    const stay = !ins.length && !outs.length;
-    rows.push({ property: disp(name), out: outs.length ? CHECKOUT : (stay ? "" : "—"), clean: clean.text, cleanState: clean.state, in: ins.length ? inText : "—", inMissing: ins.some(x => x.registry === "missing"), stay, ins, outs });
+    const staying = (gS[name] || []).map(fmtBooking); // 前日以前に到着し今夜も滞在
+    const stay = !ins.length && !outs.length && staying.length > 0;
+    const vacant = !ins.length && !outs.length && !staying.length;
+    const stayText = staying.length ? `${staying[0].name} ${staying[0].pax}名 〜${staying[0].departure.slice(5).replace("-", "/")}` : "";
+    rows.push({ property: disp(name), out: outs.length ? CHECKOUT : (stay ? "" : "—"), clean: clean.text, cleanState: clean.state, in: ins.length ? inText : "—", inMissing: ins.some(x => x.registry === "missing"), stay, vacant, stayText, ins, outs });
     for (const x of ins) {
       if (x.registry === "missing") { kpi.registryMissing++; todo.push({ kind: "registry", property: disp(name), bookingId: x.id, guest: x.name, text: `名簿未提出　IN ${CHECKIN[name] || ""}`.trim() }); }
     }
@@ -472,7 +477,9 @@ function renderDay(d,tab){
   h+='<div class="card" id="rows"><h3>物件ごとの動き</h3><div class="grid h"><span>物件</span><span>OUT</span><span>清掃</span><span>IN</span></div>';
   for(const r of d.rows){
     const cc=r.cleanState==='done'?'green':r.cleanState==='pending'?'red':r.cleanState==='none'?'muted':'';
-    h+='<div class="grid"><span>'+esc(r.property)+'</span><span class="'+(r.stay?'muted':'')+'">'+(r.stay?'連泊':esc(r.out))+'</span><span class="'+cc+'">'+(r.stay?'なし':esc(r.clean))+'</span><span class="'+(r.inMissing?'red':'')+'">'+(r.stay?'—':esc(r.in))+'</span></div>';
+    if(r.stay)h+='<div class="grid" style="grid-template-columns:1.4fr 3fr"><span>'+esc(r.property)+'</span><span class="muted">連泊中　'+esc(r.stayText)+'</span></div>';
+    else if(r.vacant)h+='<div class="grid" style="grid-template-columns:1.4fr 3fr"><span>'+esc(r.property)+'</span><span class="muted">空室</span></div>';
+    else h+='<div class="grid"><span>'+esc(r.property)+'</span><span>'+esc(r.out)+'</span><span class="'+cc+'">'+esc(r.clean)+'</span><span class="'+(r.inMissing?'red':'')+'">'+esc(r.in)+'</span></div>';
   }
   h+='</div>';
   const tt=d.timetree;
