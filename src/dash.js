@@ -228,7 +228,7 @@ export async function handleDash(request, env, url) {
     if (!allow(env, "DASH_ALLOW", u.userId)) return json({ error: "閲覧権限がありません" }, 403);
     const canSales = allow(env, "SALES_ALLOW", u.userId);
     if (tab === "sales") { if (!canSales) return json({ error: "売上の閲覧権限がありません" }, 403); return json({ ...(await cachedSales(env, !!force)), canSales }); }
-    if (tab === "kpi") { if (!canSales) return json({ error: "経営指標の閲覧権限がありません" }, 403); const [k, pl] = await Promise.all([cachedKpi(env, !!force), pricelog.list(env.KV, 30)]); return json({ ...k, pricelog: pl, canSales }); }
+    if (tab === "kpi") { if (!canSales) return json({ error: "経営指標の閲覧権限がありません" }, 403); const [k, pl, sl] = await Promise.all([cachedKpi(env, !!force), pricelog.list(env.KV, 30), cachedSales(env, !!force).catch(() => null)]); return json({ ...k, pricelog: pl, sales: sl, canSales }); }
     if (tab === "week") return json({ ...(await weekData(env)), canSales });
     if (tab === "cal") { const st = /^\d{4}-\d{2}-\d{2}$/.test(start || "") ? start : formatDateYMD(addDays(new Date(), -2)); return json({ ...(await calendarData(env, st, 28)), canSales }); }
     if (tab === "detail") return json({ ...(await bookingDetail(env, bookingId)), canSales });
@@ -254,9 +254,9 @@ body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:
 .hdr .brand b{font-size:15px;color:var(--red);letter-spacing:.02em}
 .hdr .brand .upd{font-size:11px;overflow:hidden;text-overflow:ellipsis}
 .hdr .top{display:flex;justify-content:space-between;align-items:center;font-size:22px;font-weight:800;padding:0 2px}
-.hdr .tabs{display:flex;gap:4px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px}
+.hdr .tabs{display:flex;gap:2px;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px}
 .hdr .tabs::-webkit-scrollbar{display:none}
-.hdr .tabs button{flex:1 0 auto;border:0;background:transparent;border-radius:9px;padding:9px 12px;font-size:14px;font-weight:700;color:var(--ink)}
+.hdr .tabs button{flex:1 1 0;min-width:0;border:0;background:transparent;border-radius:9px;padding:9px 2px;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdr .tabs button.on{background:var(--red);color:#fff}
 #refresh{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px}
 .sec{font-size:12px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:10px 0 -8px 2px}
@@ -354,7 +354,7 @@ td:first-child,th:first-child{text-align:left}
 </style></head><body>
 <div class="hdr"><div class="brand"><b>MFInvestment</b><span class="upd" id="sub"></span></div>
 <div class="top"><span id="title">今日</span><button id="refresh" style="display:none" aria-label="最新に更新">更新</button></div>
-<div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button><button data-tab="sales" class="sales" style="display:none">売上</button></div></div>
+<div class="tabs" id="tabs"><button data-tab="today">今日</button><button data-tab="cal">カレンダー</button><button data-tab="overview" class="sales" style="display:none">概要</button><button data-tab="kpi" class="sales" style="display:none">KPI</button><button data-tab="props" class="sales" style="display:none">物件</button><button data-tab="pace" class="sales" style="display:none">ペース</button></div></div>
 <div class="cnt" id="cnt" style="display:none"></div>
 <div class="wrap" id="app">読み込み中…</div>
 <div id="sheet"></div>
@@ -420,6 +420,10 @@ function renderOverview(d){const o=d.overview;
   h+='<div class="sec">HIGHLIGHTS</div><div class="h">今月の要点</div><div class="hl">'+(d.highlights.length?d.highlights.map(x=>'<p><span class="tag'+(/注意|稼働/.test(x.tag)?' w':'')+'">'+esc(x.tag)+'</span>'+esc(x.text)+'</p>').join(''):'<p class="muted">特記事項なし</p>')+'</div>';
   h+='<div class="sec">REVENUE</div><div class="h">月別の宿泊売上<small>過去12か月の実績 と これから5か月の予約済み</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年（実績）</span><span><i style="background:#9fb3c8;border:1px dashed #2a4d69"></i>予約済み（これから増えます）</span><span><i style="background:#cfd8e3"></i>前年の実績</span></div>'+barChart(d.monthly)+'</div>';
   h+='<div class="sec">OCCUPANCY</div><div class="h">稼働率<small>月別・前年との比較</small></div><div class="chart"><div class="lg"><span><i style="background:#2a4d69"></i>今年</span><span><i style="background:#cfd8e3"></i>前年</span></div>'+lineChart(d.monthly)+'</div>';
+  if(d.sales&&d.sales.months){h+='<div class="sec">BY MONTH</div><div class="h">月別の内訳<small>当月〜5か月先・物件ごと</small></div>';
+    for(const m of d.sales.months){h+='<div class="tbl"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 12px 4px"><b style="font-size:16px">'+esc(m.month)+'</b><span style="font-size:20px;font-weight:800">'+man(m.total)+'</span></div><div class="note" style="padding:0 12px 6px">'+m.nightsTotal+'泊・ADR ¥'+Number(m.adr).toLocaleString()+'</div><table><tr><th style="text-align:left">物件</th><th>泊</th><th>稼働</th><th>ADR</th><th>売上</th></tr>';
+      for(const [n,p] of Object.entries(m.props))h+='<tr><td>'+esc(n)+'</td><td>'+p.nights+'</td><td>'+p.occupancy+'%</td><td>¥'+Number(p.adr).toLocaleString()+'</td><td>'+man(p.revenue)+'</td></tr>';
+      h+='</table></div>';}}
   h+='<p class="note">到着日ベース・キャンセル除く・Beds24の料金（清掃費込み）。市場比較・値付け記録はPriceLabs接続後に追加。</p>';
   return h;}
 function renderKpi(d){
@@ -532,5 +536,5 @@ function renderSales(d){
 }
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>load(b.dataset.tab));
 (async()=>{try{await liff.init({liffId:LIFF_ID});if(!liff.isLoggedIn()){liff.login();return;}idToken=liff.getIDToken();
-  const q=new URLSearchParams(location.search).get('tab')||'today';await load(q);}catch(e){document.getElementById('app').innerHTML='<p class="red">エラー: '+esc(e.message)+'</p>';}})();
+  let q=new URLSearchParams(location.search).get('tab')||'today';if(q==='sales')q='overview';await load(q);}catch(e){document.getElementById('app').innerHTML='<p class="red">エラー: '+esc(e.message)+'</p>';}})();
 </script></body></html>`;
