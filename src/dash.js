@@ -92,7 +92,7 @@ export async function dayData(env, date) {
     const l = await env.KV.list({ prefix: "card:" });
     const cardsAll = await Promise.all(l.keys.slice(0, 100).map(k => env.KV.get(k.name, "json")));
     for (const card of cardsAll) {
-      if (card?.status === "pending" && !card.test) { kpi.reply++; todo.push({ kind: "reply", property: disp(card.property), guest: card.guest, text: `返信待ち ${card.createdAt ? hhmm(card.createdAt) : ""} 受信`, snippet: (card.guestMessage || "").slice(0, 50) }); }
+      if (card?.status === "pending" && !card.test) kpi.reply++; // 一覧には出さない（返信はSORAで行う）
     }
   } catch {}
   const ttLast = await env.KV.get("tt:last", "json");
@@ -434,7 +434,7 @@ function renderPace(d){
   h+='</table></div><p class="note">90%未満は赤。遅れている物件×月から、価格・最低泊数・プロモーションを見直す。値付けの記録はPriceLabs接続後に追加。</p>';
   return h;}
 function renderDay(d,tab){
-  const k=d.kpi;let h='<div class="kpi"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div><div class="'+(k.registryMissing?'warn':'')+'"><b>'+k.registryMissing+'</b><small>名簿未</small></div></div>';
+  const k=d.kpi;let h='<div class="kpi" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>'+k.in+'</b><small>IN</small></div><div><b>'+k.out+'</b><small>OUT</small></div><div><b>'+k.clean+'</b><small>清掃</small></div></div>';
   h+='<div class="card" id="todo"><h3>要対応'+(d.todo.length?'':'　<span class="muted">なし</span>')+'</h3>';
   for(const t of d.todo){
     if(t.kind==='registry')h+='<div class="row"><div><b>'+esc(t.property)+' '+esc(t.guest)+'様</b><span class="red">'+esc(t.text)+'</span></div><button class="btn" data-remind="'+t.bookingId+'" data-guest="'+esc(t.guest)+'">再催促</button></div>';

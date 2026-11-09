@@ -28,9 +28,36 @@ async function propertyName(env, token, propertyId) {
 }
 
 // ---- 5分ごと：新着を取りに行く ----
+/** 保留中カードの掃除：OTAで直接返信済みなら閉じる、3日以上たったものは期限切れにする（ダッシュボードの「返信待ち」を実態に合わせる） */
+export async function sweepPendingCards(env, token, { max = 10 } = {}) {
+  const l = await env.KV.list({ prefix: "card:" });
+  const now = Date.now();
+  const cards = (await Promise.all(l.keys.slice(0, 200).map(k => env.KV.get(k.name, "json").then(c => c && { key: k.name, c })))).filter(x => x && x.c.status === "pending" && !x.c.test);
+  cards.sort((a, b) => String(a.c.createdAt).localeCompare(String(b.c.createdAt)));
+  let closed = 0, expired = 0, checked = 0;
+  for (const { key, c } of cards) {
+    const age = now - Date.parse(c.createdAt || 0);
+    if (age > 3 * 86400000) { c.status = "expired"; await env.KV.put(key, JSON.stringify(c), { expirationTtl: 60 * 60 * 24 * 7 }); expired++; continue; }
+    if (age < 10 * 60000) continue;                                   // できたばかりは見ない
+    if (c.checkedAt && now - Date.parse(c.checkedAt) < 30 * 60000) continue; // 30分に1回まで
+    if (checked >= max || !c.bookingId) continue;
+    checked++;
+    try {
+      const th = await fetchThread(token, c.bookingId, 7);
+      const replied = th.some(t => t.source === "host" && String(t.time) > String(c.createdAt) && !isAutoHostMessage(t.message));
+      c.checkedAt = new Date().toISOString();
+      if (replied) { c.status = "replied_ota"; closed++; }
+      await env.KV.put(key, JSON.stringify(c), { expirationTtl: 60 * 60 * 24 * 7 });
+    } catch (e) { console.warn("sweep card", c.id, e.message.slice(0, 80)); }
+  }
+  if (closed || expired) { try { await env.KV.delete("dash:today:" + new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" })); } catch {} }
+  return { pending: cards.length, checked, closed, expired };
+}
+
 export async function pollGuestMessages(env, { force = false } = {}) {
   if (!env.KV) return { error: "KV未設定" };
   const token = await getToken(env);
+  try { const sw = await sweepPendingCards(env, token); if (sw.closed || sw.expired) console.log("sweep cards", JSON.stringify(sw)); } catch (e) { console.warn("sweep error", e.message); }
   const msgs = await fetchUnreadGuestMessages(token);
   const results = [];
   for (const m of msgs) {
