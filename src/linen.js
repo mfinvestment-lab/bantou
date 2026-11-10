@@ -13,30 +13,47 @@ import { sora, haru } from "./line.js";
 export const ITEMS = ["シングルシーツ", "シングルカバー", "ダブルシーツ", "ダブルカバー", "枕カバー", "バスタオル", "フェイスタオル", "バスマット"];
 const UNIT = { "シングルシーツ": 10, "シングルカバー": 10, "ダブルシーツ": 10, "ダブルカバー": 10, "枕カバー": 20, "バスタオル": 20, "フェイスタオル": 20, "バスマット": 10 };
 
-// 物件設定。beds(人数)＝1回の清掃で使うベッドまわり（人数＋1台。スタッフの「リネン使用数」で検証して調整）。タオルは人数×泊数
+// 物件設定。bed＝ベッド台数と枕の数え方（使用数は bedUse で人数から計算し、スタッフの「リネン使用数」で検証して調整）。タオルは人数×泊数
 export const FAC = {
   "サクヤ": {
     label: "サクヤ", area: "富士宮",
     par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
-    // シングル6・ダブル2。人数＋1台をシングルから使い、足りなければダブル。枕：シングル1・ダブル2、カバー1枚ずつ
-    beds: n => { const s = Math.min(6, n + 1), d = Math.min(2, Math.ceil(Math.max(0, n + 1 - 6) / 2)); return { "シングルシーツ": s, "シングルカバー": s, "ダブルシーツ": d, "ダブルカバー": d, "枕カバー": Math.min(10, s + d * 2) }; },
+    bed: { single: 6, double: 2, pillowPerSingle: 1, pillowPerDouble: 2, coverPerPillow: 1, maxPillowCover: 10 },
     mat: () => 1
   },
   "桜ハウス": {
     label: "桜ハウス", area: "富士宮", small: true, // リネン庫が小さい → 常備数を超えないよう切り捨て
     par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
-    // シングル4・ダブル2。枕は1台1個、カバー2枚
-    beds: n => { const s = Math.min(4, n + 1), d = Math.min(2, Math.ceil(Math.max(0, n + 1 - 4) / 2)); return { "シングルシーツ": s, "シングルカバー": s, "ダブルシーツ": d, "ダブルカバー": d, "枕カバー": Math.min(12, (s + d) * 2) }; },
+    bed: { single: 4, double: 2, pillowPerSingle: 1, pillowPerDouble: 1, coverPerPillow: 2, maxPillowCover: 12 },
     mat: () => 1
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
     par: { "シングルシーツ": 30, "シングルカバー": 30, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 10 },
-    // シングル7。実績 3名→シーツ4・枕カバー8（2026-11-10）
-    beds: n => { const s = Math.min(7, n + 1); return { "シングルシーツ": s, "シングルカバー": s, "枕カバー": Math.min(14, s * 2) }; },
+    // 実績 3名→シーツ4・枕カバー8（2026-11-10）
+    bed: { single: 7, double: 0, pillowPerSingle: 1, pillowPerDouble: 0, coverPerPillow: 2, maxPillowCover: 14 },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
   }
 };
+/**
+ * ベッドまわりの使用数。人数＋1人分のベッドを用意する前提。
+ * シングルから使うか、ダブルから使うかはゲスト次第なので、両方の場合を計算して品目ごとに多い方を取る（欠品を防ぐ側に倒す）
+ */
+function bedUse(b, n) {
+  const people = n + 1;
+  const fill = singleFirst => {
+    let s, d;
+    if (singleFirst) { s = Math.min(b.single, people); d = Math.min(b.double, Math.ceil(Math.max(0, people - s) / 2)); }
+    else { d = Math.min(b.double, Math.ceil(people / 2)); s = Math.min(b.single, Math.max(0, people - d * 2)); }
+    const pc = Math.min(b.maxPillowCover, (s * b.pillowPerSingle + d * b.pillowPerDouble) * b.coverPerPillow);
+    return { s, d, pc };
+  };
+  const a = fill(true), c = fill(false);
+  const s = Math.max(a.s, c.s), d = Math.max(a.d, c.d), pc = Math.max(a.pc, c.pc);
+  const u = { "シングルシーツ": s, "シングルカバー": s, "枕カバー": pc };
+  if (b.double) { u["ダブルシーツ"] = d; u["ダブルカバー"] = d; }
+  return u;
+}
 const AREAS = { "富士宮": ["サクヤ", "桜ハウス"], "静岡": ["nel.shizuoka"] };
 const DELIVERY_DOW = { "富士宮": [3, 6], "静岡": [1, 4] };       // 水・土 ／ 月・木
 const ORDER_DOW = { 2: { "富士宮": 1, "静岡": 2 }, 5: { "富士宮": 1, "静岡": 3 } }; // 火→水・木、金→土・月（発注予定日からの日数）
@@ -85,7 +102,7 @@ const nextDelivery = (area, after) => { for (let i = 1; i <= 7; i++) { const s =
 function usage(f, n, nights) {
   const cfg = FAC[f], u = {};
   for (const it of ITEMS) u[it] = 0;
-  for (const [it, q] of Object.entries(cfg.beds(n))) u[it] = q;
+  for (const [it, q] of Object.entries(bedUse(cfg.bed, n))) u[it] = q;
   u["バスタオル"] = n * nights;
   u["フェイスタオル"] = n * nights;
   u["バスマット"] = cfg.mat(nights);
@@ -440,3 +457,5 @@ export async function usageReport(env, days = 30) {
   }
   return { from, to: today, rows };
 }
+
+export const bedUseFor = (f, n) => bedUse(FAC[f].bed, n);
