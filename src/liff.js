@@ -23,8 +23,25 @@ async function verifyIdToken(env, idToken) {
   return { userId: d.sub, name: d.name || "" };
 }
 
-const gasGet = (env, facility) => fetch(`${env.GAS_URL}?action=get&facility=${encodeURIComponent(facility)}`).then(r => r.json());
-const gasPost = (env, body) => fetch(env.GAS_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
+// 在庫はGoogleスプレッドシート（Apps Script）にあり、1回の読み込みに数秒かかる。KVに10分キャッシュし、書き込み時に捨てる
+const STOCK_TTL = 600;
+const gasGetRaw = (env, facility) => fetch(`${env.GAS_URL}?action=get&facility=${encodeURIComponent(facility)}`).then(r => r.json());
+async function gasGet(env, facility, { fresh = false } = {}) {
+  const key = `gasstock:${facility}`;
+  if (!fresh && env.KV) { const c = await env.KV.get(key, "json"); if (c) return c; }
+  const v = await gasGetRaw(env, facility);
+  if (env.KV && v && !v.error) await env.KV.put(key, JSON.stringify(v), { expirationTtl: STOCK_TTL });
+  return v;
+}
+const gasPost = async (env, body) => {
+  const r = await fetch(env.GAS_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
+  if (env.KV && body.facility) await env.KV.delete(`gasstock:${body.facility}`);
+  return r;
+};
+/** cron から：在庫キャッシュを先に温めておく（開いたときに待たない） */
+export async function warmLinenStock(env) {
+  await Promise.all(Object.keys(FACILITY_LOC).map(f => gasGet(env, f, { fresh: true }).catch(() => null)));
+}
 
 async function who(env, idToken, groupId) {
   const u = await verifyIdToken(env, idToken);
@@ -51,26 +68,30 @@ export async function handleLiff(request, env, url) {
     return new Response(PAGE.replace("__LIFF_ID__", env.LIFF_ID), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" } });
   }
   if (path === "/liff/linen/me" && request.method === "POST") {
-    const { idToken, g } = await request.json();
+    const { idToken, g, f: want } = await request.json();
     const w = await who(env, idToken, g);
     if (w.error) return json({ error: w.error }, w.status);
     const L = await import("./linen.js");
     const facilities = Object.keys(FACILITY_LOC).filter(f => w.me.loc === "*" || FACILITY_LOC[f] === w.me.loc);
+    // カードから開いたとき（物件が決まっている）はその物件だけ読む
+    const targets = want && facilities.includes(want) ? [want] : facilities;
     const shed = await L.shedGet(env);
     const out = {};
-    for (const f of facilities) {
-      let stock = {};
-      try { const s = await gasGet(env, f); stock = Object.fromEntries((s.items || []).map(it => [it.name, it.current])); } catch {}
-      let next = null; try { next = await L.nextGuest(env, f); } catch {}
+    await Promise.all(targets.map(async f => {
+      const [s, next, used] = await Promise.all([
+        gasGet(env, f).catch(() => null),
+        L.nextGuest(env, f).catch(() => null),
+        L.usageLogged(env, f)
+      ]);
       out[f] = {
         label: LABEL[f], area: FACILITY_LOC[f],
         items: Object.keys(L.FAC[f].par),
-        stock, next,
+        stock: Object.fromEntries((s?.items || []).map(it => [it.name, it.current])), next,
         shed: FACILITY_LOC[f] === "富士宮" ? (shed[f] || {}) : null,
-        usedToday: await L.usageLogged(env, f)
+        usedToday: used
       };
-    }
-    return json({ name: w.u.name, facilities, data: out });
+    }));
+    return json({ name: w.u.name, facilities, loaded: targets, data: out });
   }
   if (path === "/liff/linen/submit" && request.method === "POST") {
     const { idToken, facility, counts, mode, shedEmpty, g } = await request.json();
@@ -146,7 +167,7 @@ async function main(){
     if(!liff.isLoggedIn()){liff.login();return;}
     idToken=liff.getIDToken();
     P=new URLSearchParams(location.search);
-    const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||''})});
+    const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||'',f:P.get('f')||''})});
     D=await r.json();
     if(D.error){$('#app').innerHTML='<p class="err">'+esc(D.error)+'</p>';return;}
     // 清掃カードの［② リネン］から開いたときは、その物件に固定（取り違え防止）
@@ -158,7 +179,7 @@ async function main(){
 // 物件を選ぶ画面（最初から選ばれた状態にはしない）
 function pick(){
   $('#app').innerHTML='<div class="pick"><p>どちらの物件ですか？</p>'+D.facilities.map(f=>'<button data-f="'+esc(f)+'" style="background:'+COLOR[f]+'">'+esc(D.data[f].label)+'</button>').join('')+'</div>';
-  document.querySelectorAll('.pick button').forEach(b=>b.onclick=()=>{F=b.dataset.f;mode='use';draw();});
+  document.querySelectorAll('.pick button').forEach(b=>b.onclick=async()=>{F=b.dataset.f;mode='use';if(!D.data[F]){$('#app').innerHTML='<p>読み込み中…</p>';const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||'',f:F})});const d2=await r.json();if(d2.error){$('#app').innerHTML='<p class="err">'+esc(d2.error)+'</p>';return;}Object.assign(D.data,d2.data);}draw();});
 }
 function draw(){
   const d=D.data[F];

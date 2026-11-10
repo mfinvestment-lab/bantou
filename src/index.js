@@ -315,6 +315,10 @@ export default {
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
       ctx.waitUntil(import("./cleanlog.js").then(m => m.runLinenPrompts(env)).catch(e => console.error("linen prompt", e.message)));
+      { // 清掃の時間帯（日本時間9〜16時）はリネン在庫を先読みしておく
+        const h = Number(new Date().toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Tokyo" }));
+        if (h >= 9 && h < 16) ctx.waitUntil(import("./liff.js").then(m => m.warmLinenStock(env)).catch(e => console.error("warm linen", e.message)));
+      }
       ctx.waitUntil(import("./contractor.js").then(m => m.runContractorButtons(env)).then(r => { if (r.out?.length) console.log("contractor buttons", JSON.stringify(r)); }).catch(e => console.error("contractor buttons", e.message)));
       ctx.waitUntil(import("./linen.js").then(m => m.remindLinen(env)).catch(e => console.error("linen remind", e.message)));
       ctx.waitUntil(import("./jobs.js").then(m => m.runJobs(env)).then(r => { if (r.ran) console.log("jobs", JSON.stringify(r)); }).catch(e => console.error("jobs error", e.message)));
