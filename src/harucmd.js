@@ -32,7 +32,24 @@ const HELP = `HARU（清掃用）の使い方
 
 /** 1対1の HARU テキストコマンド。処理したら true */
 export const GROUP_LOC = env => ({ [env.LINE_GROUP_FUJINOMIYA_WEEKDAY]: "富士宮", [env.LINE_GROUP_FUJINOMIYA_HOLIDAY]: "富士宮", [env.LINE_GROUP_SHIZUOKA]: "静岡" });
-const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定" };
+const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定", "リネン": "リネン入力" };
+// 清掃グループで返事をするたびにキーボード上に出すボタン
+export const GROUP_QR = [
+  { type: "action", action: { type: "message", label: "🧹 開始", text: "清掃開始" } },
+  { type: "action", action: { type: "message", label: "🧺 リネン", text: "リネン入力" } },
+  { type: "action", action: { type: "message", label: "✅ 終了", text: "清掃終了" } },
+  { type: "action", action: { type: "message", label: "📅 今日", text: "今日の予定" } },
+  { type: "action", action: { type: "message", label: "☰ メニュー", text: "メニュー" } }
+];
+const qbtn = (label, text, style = "secondary") => ({ type: "button", style, height: "sm", action: { type: "message", label, text } });
+export const MENU_CARD = { type: "flex", altText: "HARU メニュー", contents: { type: "bubble", size: "kilo",
+  header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "10px", contents: [{ type: "text", text: "HARU メニュー", color: "#ffffff", weight: "bold" }] },
+  body: { type: "box", layout: "vertical", spacing: "sm", contents: [
+    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("清掃開始", "清掃開始", "primary"), qbtn("清掃終了", "清掃終了", "primary")] },
+    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("リネン入力", "リネン入力"), qbtn("今日の予定", "今日の予定")] },
+    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("棚卸", "棚卸"), qbtn("使い方", "ヘルプ")] },
+    { type: "text", text: "このカードは「メニュー」と送ればいつでも出せます", size: "xxs", color: "#888888", wrap: true, margin: "sm" }
+  ] } } };
 
 export async function handleHaruDirect(env, event) {
   const line = haru(env);
@@ -46,6 +63,7 @@ export async function handleHaruDirect(env, event) {
   const isOwner = !groupId && userId === env.OWNER_USER_ID;
   // 「棚卸 物件名」＋品目ごとの「今ある枚数」（グループ・1対1どちらでも）
   if (/^棚卸\s*\S/.test(text) && text.includes("\n")) return await handleStockCountText(env, event, text, me, isOwner);
+  if (text === "メニュー" || text === "menu") { await line.replyRaw(event.replyToken, [MENU_CARD]); return true; }
   if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ", "リネン入力", "棚卸"].includes(text)) return false; // グループでは在庫BOTを優先
 
   if (text === "登録" || text === "担当登録") {

@@ -1,9 +1,23 @@
 // LINE Messaging API の薄いラッパー。チャネルごとに token / secret を持つ。
 
+// 返信トークンごとに付けるクイックリプライ（清掃グループでの返信すべてに、キーボード上のボタンを出す）
+const QR = new Map();
+export function setQuickReply(replyToken, items) { if (!replyToken || !items?.length) return; if (QR.size > 300) QR.clear(); QR.set(replyToken, items); }
+function withQR(body) {
+  const items = body.replyToken && QR.get(body.replyToken);
+  if (!items) return body;
+  QR.delete(body.replyToken);
+  const msgs = body.messages.slice();
+  const last = msgs[msgs.length - 1];
+  if (last && !last.quickReply) msgs[msgs.length - 1] = { ...last, quickReply: { items } };
+  return { ...body, messages: msgs };
+}
+
 export function createLineClient(accessToken, channelSecret) {
   if (!accessToken) throw new Error("LINE access token が未設定です");
 
   async function call(path, body) {
+    if (path === "/message/reply") body = withQR(body);
     const res = await fetch(`https://api.line.me/v2/bot${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },

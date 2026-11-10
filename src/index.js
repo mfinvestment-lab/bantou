@@ -25,6 +25,12 @@ export default {
     if (request.method === "POST" && (path === "/haru/webhook" || path === "/")) {
       // "/" は旧番頭との互換（LINE側のWebhook URLを切り替えるまでの間）
       return handleWebhook(request, ctx, haru(env), async event => {
+        // 自社の清掃グループ：HARUの返事すべてにキーボード上のボタンを付ける（返信なので通数は増えない）
+        { const g = event.source?.groupId;
+          if (g && [env.LINE_GROUP_FUJINOMIYA_WEEKDAY, env.LINE_GROUP_FUJINOMIYA_HOLIDAY, env.LINE_GROUP_SHIZUOKA].includes(g) && event.replyToken) {
+            const { setQuickReply } = await import("./line.js"); const { GROUP_QR } = await import("./harucmd.js");
+            setQuickReply(event.replyToken, GROUP_QR);
+          } }
         if (event.type === "postback") {
           if (event.postback?.data === "act=sample") { await haru(env).reply(event.replyToken, "見本のボタンです（何も記録されません）"); return; }
           await handleCleaningPostback(env, event); return;
