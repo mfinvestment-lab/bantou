@@ -60,8 +60,9 @@ function cardInfo(name, i) {
   const next = r.checkinsToday[0] || r.nextFutureCheckin;
   const nextWhen = r.checkinsToday.length ? "本日" : next ? next.arrival.slice(5).replace("-", "/") : null;
   const text = `チェックアウト 10:00 → 次の到着 ${nextWhen ? `${nextWhen} 16:00` : "未定"}${r.checkinsToday.length ? "（当日イン）" : ""}`;
-  const linen = c ? `${c.count}名${c.nights}泊　タオル${c.count * c.nights}・布団${c.count}` : "";
-  return { name, text, linen };
+  const guests = c ? `${c.count}名${c.nights}泊` : "";            // 次のゲスト用にセットする人数・泊数（カードで大きく出す）
+  const linen = c ? `タオル${c.count * c.nights}・布団${c.count}` : "";
+  return { name, guests, text, linen };
 }
 
 export async function runCleaningNotification(env) {

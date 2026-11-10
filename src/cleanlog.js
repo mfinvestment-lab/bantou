@@ -30,7 +30,11 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
   const sections = [];
   facilities.forEach((f, i) => {
     if (i > 0) sections.push({ type: "separator", margin: "md" });
-    const lines = [txt(f.name, { weight: "bold", size: "md", margin: i > 0 ? "md" : "none" })];
+    // 物件名と、次のゲストの人数・泊数（リネンを用意する目安なので大きく）
+    const lines = [{ type: "box", layout: "baseline", spacing: "md", margin: i > 0 ? "md" : "none", contents: [
+      { type: "text", text: f.name, weight: "bold", size: "lg", flex: 0 },
+      ...(f.guests ? [{ type: "text", text: f.guests, weight: "bold", size: "lg", color: "#d1477a", flex: 0 }] : [])
+    ] }];
     if (f.text) lines.push(txt(f.text, { color: "#6b6b6b" }));
     if (f.linen) lines.push(txt(f.linen, { color: "#6b6b6b", size: "xs" }));
     // 開始 → リネン → 終了 の順に押す。すべてボタンへの返信なので通数を使わない
@@ -46,7 +50,7 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
     sections.push(...lines);
   });
   return { type: "flex", altText: `${title}：${facilities.map(f => f.name).join("・")}`, contents: {
-    type: "bubble", size: "giga",
+    type: "bubble", size: "mega",
     header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [{ type: "text", text: title, color: "#ffffff", weight: "bold", size: "md" }] },
     body: { type: "box", layout: "vertical", spacing: "xs", contents: sections }
   } };

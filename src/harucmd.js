@@ -66,8 +66,8 @@ export async function handleHaruDirect(env, event) {
     const { cleaningButtonsMessage } = await import("./cleanlog.js");
     const d = formatDateYMD(new Date());
     const rows = [
-      { name: "サクヤ", text: "チェックアウト 10:00 → 次の到着 本日 16:00（当日イン）", linen: "" },
-      { name: "桜ハウス", text: "チェックアウト 10:00 → 次の到着 11/16 16:00", linen: "" }
+      { name: "サクヤ", guests: "4名2泊", text: "チェックアウト 10:00 → 次の到着 本日 16:00（当日イン）", linen: "タオル8・布団4" },
+      { name: "桜ハウス", guests: "8名1泊", text: "チェックアウト 10:00 → 次の到着 11/16 16:00", linen: "タオル8・布団8" }
     ];
     // 見本なので全ボタンを「見本です」の返事だけにする
     const dummy = m => JSON.parse(JSON.stringify(m), (k, v) => (v && typeof v === "object" && v.type === "button" ? { ...v, action: { type: "postback", label: v.action.label, data: "act=sample", displayText: v.action.label } } : v));
