@@ -1,6 +1,6 @@
 // 在庫管理BOT（HARU）: LINEの発言を解釈して GAS（スプレッドシート）を読み書きする
 import { haru } from "./line.js";
-import { shedTake } from "./linen.js";
+import { shedTake, logUsage } from "./linen.js";
 
 const FACILITY_LOCATION = { "サクヤ": "富士宮", "桜ハウス": "富士宮", "nel.shizuoka": "静岡" };
 const FACILITY_MAP = {
@@ -254,7 +254,10 @@ export async function handleInventoryMessage(env, text, replyToken, userId) {
       }
       case "update_multi": {
         const msgs = [];
-        for (const b of intent.blocks) msgs.push(formatUpdateReply(b.facility, await gas.post(env, { action: "update", facility: b.facility, items: b.items })));
+        for (const b of intent.blocks) {
+          msgs.push(formatUpdateReply(b.facility, await gas.post(env, { action: "update", facility: b.facility, items: b.items })));
+          await logUsage(env, b.facility, b.items).catch(e => console.error("logUsage", e.message));
+        }
         await line.replyMany(replyToken, msgs);
         return;
       }
@@ -264,6 +267,7 @@ export async function handleInventoryMessage(env, text, replyToken, userId) {
         return;
       case "update":
         await line.reply(replyToken, formatUpdateReply(intent.facility, await gas.post(env, { action: "update", facility: intent.facility, items: intent.items })));
+        await logUsage(env, intent.facility, intent.items).catch(e => console.error("logUsage", e.message)); // 使用数の実績（式の調整用）
         return;
       case "check":
         await line.reply(replyToken, formatCheckReply(intent.facility, await gas.get(env, intent.facility)));

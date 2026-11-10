@@ -193,6 +193,7 @@ export default {
           const { runLinenOrder } = await import("./linen.js");
           return json(await runLinenOrder(env, { force: url.searchParams.get("force") === "1", nominal: url.searchParams.get("nominal") || undefined }));
         }
+        if (path === "/admin/linen-usage") { const { usageReport } = await import("./linen.js"); return json(await usageReport(env, Number(url.searchParams.get("days") || 30))); }
         if (path === "/admin/linen-shed") { const { shedGet } = await import("./linen.js"); return json(await shedGet(env)); }
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {

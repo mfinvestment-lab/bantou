@@ -13,24 +13,27 @@ import { sora, haru } from "./line.js";
 export const ITEMS = ["シングルシーツ", "シングルカバー", "ダブルシーツ", "ダブルカバー", "枕カバー", "バスタオル", "フェイスタオル", "バスマット"];
 const UNIT = { "シングルシーツ": 10, "シングルカバー": 10, "ダブルシーツ": 10, "ダブルカバー": 10, "枕カバー": 20, "バスタオル": 20, "フェイスタオル": 20, "バスマット": 10 };
 
-// 物件設定。beds＝1回の清掃で使うベッドまわりの最大数（「最大使用で引く」方針）。タオルは人数×泊数
+// 物件設定。beds(人数)＝1回の清掃で使うベッドまわり（人数＋1台。スタッフの「リネン使用数」で検証して調整）。タオルは人数×泊数
 export const FAC = {
   "サクヤ": {
     label: "サクヤ", area: "富士宮",
     par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
-    beds: { "シングルシーツ": 6, "シングルカバー": 6, "ダブルシーツ": 2, "ダブルカバー": 2, "枕カバー": 10 },
+    // シングル6・ダブル2。人数＋1台をシングルから使い、足りなければダブル。枕：シングル1・ダブル2、カバー1枚ずつ
+    beds: n => { const s = Math.min(6, n + 1), d = Math.min(2, Math.ceil(Math.max(0, n + 1 - 6) / 2)); return { "シングルシーツ": s, "シングルカバー": s, "ダブルシーツ": d, "ダブルカバー": d, "枕カバー": Math.min(10, s + d * 2) }; },
     mat: () => 1
   },
   "桜ハウス": {
     label: "桜ハウス", area: "富士宮", small: true, // リネン庫が小さい → 常備数を超えないよう切り捨て
     par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
-    beds: { "シングルシーツ": 4, "シングルカバー": 4, "ダブルシーツ": 2, "ダブルカバー": 2, "枕カバー": 12 },
+    // シングル4・ダブル2。枕は1台1個、カバー2枚
+    beds: n => { const s = Math.min(4, n + 1), d = Math.min(2, Math.ceil(Math.max(0, n + 1 - 4) / 2)); return { "シングルシーツ": s, "シングルカバー": s, "ダブルシーツ": d, "ダブルカバー": d, "枕カバー": Math.min(12, (s + d) * 2) }; },
     mat: () => 1
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
     par: { "シングルシーツ": 30, "シングルカバー": 30, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 10 },
-    beds: { "シングルシーツ": 7, "シングルカバー": 7, "枕カバー": 14 },
+    // シングル7。実績 3名→シーツ4・枕カバー8（2026-11-10）
+    beds: n => { const s = Math.min(7, n + 1); return { "シングルシーツ": s, "シングルカバー": s, "枕カバー": Math.min(14, s * 2) }; },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
   }
 };
@@ -82,7 +85,7 @@ const nextDelivery = (area, after) => { for (let i = 1; i <= 7; i++) { const s =
 function usage(f, n, nights) {
   const cfg = FAC[f], u = {};
   for (const it of ITEMS) u[it] = 0;
-  for (const [it, q] of Object.entries(cfg.beds)) u[it] = q;
+  for (const [it, q] of Object.entries(cfg.beds(n))) u[it] = q;
   u["バスタオル"] = n * nights;
   u["フェイスタオル"] = n * nights;
   u["バスマット"] = cfg.mat(nights);
@@ -91,19 +94,12 @@ function usage(f, n, nights) {
 const guestsOf = b => (b.numAdult || 0) + (b.numChild || 0);
 const nightsOf = b => Math.max(1, Math.round((toD(b.departure) - toD(b.arrival)) / 86400e3));
 
-/** 清掃（＝出発日）ごとに、次のゲスト用にセットする数。清掃通知（cleaning.js）と同じ考え方 */
+/** 清掃（＝出発日）ごとに使う数。出発するゲストの人数・泊数で見る（スタッフの「リネン使用数」報告と同じ基準） */
 function cleanings(f, bookings, from, to) {
   const max = BEDS24_PROPERTIES[f]?.maxGuests || 1;
-  const list = bookings.filter(b => b.departure >= from && b.departure <= to);
-  return list.map(b => {
-    const next = bookings.filter(x => x.id !== b.id && x.arrival >= b.departure).sort((a, c) => a.arrival.localeCompare(c.arrival))[0];
-    let n = max, k = 1, basis = "次の予約なし→定員";
-    if (next) {
-      const nn = guestsOf(next) || max, nk = nightsOf(next);
-      if (next.arrival <= add(b.departure, 1) || nn * nk >= max) { n = nn; k = nk; basis = `次 ${md(next.arrival)} ${nn}名${nk}泊`; }
-      else basis = `次 ${md(next.arrival)}（${nn}名${nk}泊）まで間あり→定員`;
-    }
-    return { date: b.departure, n, k, basis, use: usage(f, n, k) };
+  return bookings.filter(b => b.departure >= from && b.departure <= to).map(b => {
+    const n = Math.min(max, guestsOf(b) || max), k = nightsOf(b);
+    return { date: b.departure, n, k, basis: `${n}名${k}泊`, use: usage(f, n, k) };
   });
 }
 const sumUse = (cl, from, to) => {
@@ -416,4 +412,31 @@ export async function handleLinenCommand(env, event, text) {
   }
   if (text === "小屋クリア") { await shedClear(env); await line.reply(event.replyToken, "物置小屋の記録を0にしました。"); return true; }
   return false;
+}
+
+// ---- 使用数報告の記録（式の調整用） ----
+/** HARUの「リネン使用数」（在庫シートの update）を日付・物件ごとに記録する */
+export async function logUsage(env, facility, items) {
+  if (!env.KV || !FAC[facility]) return;
+  const k = `linenuse:${todayJST()}:${facility}`;
+  const cur = (await env.KV.get(k, "json")) || {};
+  for (const { name, used } of items) if (used != null) cur[name] = (cur[name] || 0) + Number(used);
+  await env.KV.put(k, JSON.stringify(cur), { expirationTtl: 60 * 60 * 24 * 400 });
+}
+/** 記録した使用数と、その日に出発した予約から計算した数を並べる（/admin/linen-usage） */
+export async function usageReport(env, days = 30) {
+  const token = await getToken(env), today = todayJST(), from = add(today, -days);
+  const rows = [];
+  for (const f of Object.keys(FAC)) {
+    const bk = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${from}&departureTo=${today}`)).filter(b => b.status !== "cancelled" && b.status !== "black");
+    for (let d = from; d <= today; d = add(d, 1)) {
+      const rep = await env.KV.get(`linenuse:${d}:${f}`, "json");
+      if (!rep) continue;
+      const b = bk.find(x => x.departure === d);
+      const n = b ? guestsOf(b) : null, k = b ? nightsOf(b) : null;
+      const est = b ? usage(f, n, k) : null;
+      rows.push({ date: d, facility: f, guests: n, nights: k, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, { reported: rep[it] ?? null, model: est ? est[it] : null }])) });
+    }
+  }
+  return { from, to: today, rows };
 }
