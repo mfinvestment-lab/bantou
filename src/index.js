@@ -142,6 +142,11 @@ export default {
           const data = await res.json();
           return json({ model, max, size, systemChars: system.length, status: res.status, stop: data.stop_reason, usage: data.usage, blocks: (data.content || []).map(c => c.type), textHead: (data.content || []).filter(c => c.type === "text").map(c => c.text).join("").slice(0, 200), error: data.error || null });
         }
+        if (path === "/admin/morning-brief") {
+          const m = await import("./brief.js");
+          if (url.searchParams.get("send") === "1") return json(await m.sendMorningBrief(env));
+          return new Response(await m.buildMorningBrief(env, url.searchParams.get("date") || undefined), { headers: { "content-type": "text/plain; charset=utf-8" } });
+        }
         if (path === "/admin/run-jobs") {
           const { runJobs } = await import("./jobs.js");
           return json(await runJobs(env));
@@ -242,6 +247,7 @@ export default {
     };
     if (event.cron === "0 23 * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env, { sales: true })));
+      ctx.waitUntil(import("./brief.js").then(m => m.sendMorningBrief(env)).then(r => console.log("morning brief", JSON.stringify(r).slice(0, 200))).catch(e => notifyOwner(`⚠️ 朝の要約エラー: ${e.message}`)));
       ctx.waitUntil(
         runCleaningNotification(env)
           .then(r => console.log("清掃通知 完了:", JSON.stringify(r)))

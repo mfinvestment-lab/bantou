@@ -84,6 +84,11 @@ export async function handleSoraEvent(env, event) {
       await line.replyRaw(event.replyToken, [{ type: "text", text: "何をしますか？", quickReply: { items: [qr("FAQ追加", "FAQ追加"), qr("ルール表示", "ルール表示"), qr("学習一覧", "学習一覧"), qr("FAQ一覧", "FAQ一覧")] } }]);
       return;
     }
+    if (text === "朝の要約" || text === "要約") {
+      const { buildMorningBrief } = await import("./brief.js");
+      await line.replyRaw(event.replyToken, [withMenu(await buildMorningBrief(env))]);
+      return;
+    }
     if (text === "今日" || text === "売上") {
       const id = env.LIFF_DASH_ID || env.LIFF_ID;
       if (!id) { await line.reply(event.replyToken, `「${text}」のダッシュボードは準備中です。`); return; }

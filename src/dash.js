@@ -49,7 +49,7 @@ function registry(b) {
   if (!uses) return "n/a";
   return items.some(i => /GUESTDONE/i.test(i.code || "")) ? "done" : "missing";
 }
-const fmtBooking = b => ({ id: b.id, name: guestName(b), pax: pax(b), nights: nights(b), channel: b.channel || b.referer || "直", registry: registry(b), arrival: b.arrival, departure: b.departure });
+const fmtBooking = b => ({ id: b.id, name: guestName(b), pax: pax(b), nights: nights(b), channel: b.channel || b.referer || "直", registry: registry(b), arrival: b.arrival, departure: b.departure, price: Number(b.price) || 0 });
 
 /** 1日分（今日／明日） */
 export async function dayData(env, date) {
@@ -87,7 +87,7 @@ export async function dayData(env, date) {
     const stay = !ins.length && !outs.length && staying.length > 0;
     const vacant = !ins.length && !outs.length && !staying.length;
     const stayText = staying.length ? `${staying[0].name} ${staying[0].pax}名 〜${staying[0].departure.slice(5).replace("-", "/")}` : "";
-    rows.push({ property: disp(name), out: outs.length ? CHECKOUT : (stay ? "" : "—"), clean: clean.text, cleanState: clean.state, in: ins.length ? inText : "—", inMissing: ins.some(x => x.registry === "missing"), stay, vacant, stayText, ins, outs });
+    rows.push({ property: disp(name), out: outs.length ? CHECKOUT : (stay ? "" : "—"), clean: clean.text, cleanState: clean.state, in: ins.length ? inText : "—", inMissing: ins.some(x => x.registry === "missing"), stay, vacant, stayText, staying: staying.length, ins, outs });
     for (const x of ins) {
       if (x.registry === "missing") { kpi.registryMissing++; todo.push({ kind: "registry", property: disp(name), bookingId: x.id, guest: x.name, text: `名簿未提出　IN ${CHECKIN[name] || ""}`.trim() }); }
     }
