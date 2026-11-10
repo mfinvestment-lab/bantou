@@ -8,7 +8,7 @@
 //                  発注〜補充までの分は KV の「小屋」に物件別で持ち、計算では在庫として数える。
 //                  HARUの「補充」で小屋から差し引く（inventory.js から shedTake を呼ぶ）。
 import { BEDS24_PROPERTIES, getToken, getBookings } from "./beds24.js";
-import { sora } from "./line.js";
+import { sora, haru } from "./line.js";
 
 export const ITEMS = ["シングルシーツ", "シングルカバー", "ダブルシーツ", "ダブルカバー", "枕カバー", "バスタオル", "フェイスタオル", "バスマット"];
 const UNIT = { "シングルシーツ": 10, "シングルカバー": 10, "ダブルシーツ": 10, "ダブルカバー": 10, "枕カバー": 20, "バスタオル": 20, "フェイスタオル": 20, "バスマット": 10 };
@@ -236,7 +236,9 @@ function card(o, id) {
       header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [T(`🧺 リネン発注案 ${mdw(o.today)}`, { color: "#ffffff", weight: "bold", size: "md" }), T("9:30までにゆーかさんへ", { color: "#cccccc" })] },
       body: { type: "box", layout: "vertical", spacing: "xs", contents: body },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
-        btn("ゆーかさんに送る", { type: "uri", uri: `${o.baseUrl}/linen/share?id=${id}` }, "primary"),
+        o.group
+          ? btn("ゆーかさんのグループに送る", { type: "postback", data: `linen=${id}&a=send`, displayText: "ゆーかさんのグループに送る" }, "primary")
+          : btn("ゆーかさんに送る", { type: "uri", uri: `${o.baseUrl}/linen/share?id=${id}` }, "primary"),
         { type: "box", layout: "horizontal", spacing: "sm", contents: [
           btn("数量を直す", { type: "postback", data: `linen=${id}&a=edit`, displayText: "数量を直す" }),
           btn("今回は送らない", { type: "postback", data: `linen=${id}&a=skip`, displayText: "今回は送らない" })
@@ -251,7 +253,7 @@ const todayKey = d => `linen:today:${d}`;
 
 async function pushDraft(env, o, { reply } = {}) {
   const id = o.id || crypto.randomUUID().replace(/-/g, "");
-  o.id = id; o.baseUrl = BASE_URL(env);
+  o.id = id; o.baseUrl = BASE_URL(env); o.group = !!env.LINE_GROUP_LINEN; // グループIDがあれば HARU から直接投稿
   await env.KV.put(draftKey(id), JSON.stringify(o), { expirationTtl: 60 * 60 * 24 * 14 });
   await env.KV.put(todayKey(o.today), id, { expirationTtl: 60 * 60 * 24 * 2 });
   const msgs = [card(o, id), { type: "text", text: o.text }];
@@ -326,6 +328,16 @@ export async function handleLinenPostback(env, event, pp) {
   const o = await env.KV.get(draftKey(id), "json");
   if (!o) { await line.reply(event.replyToken, "この発注案は期限切れです。「リネン発注案」で作り直せます。"); return; }
   if (o.sentAt) { await line.reply(event.replyToken, `この発注は ${new Date(o.sentAt).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" })} に送信・記録済みです。`); return; }
+  if (a === "send") {
+    if (!env.LINE_GROUP_LINEN) { await line.reply(event.replyToken, "リネン業者グループが未設定です。"); return; }
+    o.sentAt = new Date().toISOString();
+    await env.KV.put(draftKey(id), JSON.stringify(o), { expirationTtl: 60 * 60 * 24 * 60 });
+    try { await haru(env).push(env.LINE_GROUP_LINEN, o.text); }
+    catch (e) { o.sentAt = null; await env.KV.put(draftKey(id), JSON.stringify(o), { expirationTtl: 60 * 60 * 24 * 14 }); await line.reply(event.replyToken, `⚠️ 送信できませんでした：${e.message.slice(0, 120)}`); return; }
+    await recordOrder(env, o).catch(e => console.error("linen record", e.message));
+    await line.reply(event.replyToken, "✅ ゆーかさんのグループに送信し、発注を記録しました。");
+    return;
+  }
   if (a === "skip") {
     o.skippedAt = new Date().toISOString();
     await env.KV.put(draftKey(id), JSON.stringify(o), { expirationTtl: 60 * 60 * 24 * 14 });

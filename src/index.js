@@ -33,6 +33,9 @@ export default {
           await haru(env).reply(event.replyToken, `${sourceType}ID：\n${sourceIdOf(event)}`);
           return;
         }
+        // 清掃グループ以外のグループ（リネン業者とのグループ等）では、在庫の読み取りなどに一切反応しない
+        const gid = event.source.groupId || event.source.roomId;
+        if (gid && ![env.LINE_GROUP_FUJINOMIYA_WEEKDAY, env.LINE_GROUP_FUJINOMIYA_HOLIDAY, env.LINE_GROUP_SHIZUOKA].includes(gid)) return;
         if (env.KV && (await handleHaruDirect(env, event))) return;
         await handleInventoryMessage(env, text, event.replyToken, event.source.userId);
       });

@@ -45,6 +45,8 @@ SALES_ALLOW = ""
 SORA_CLEAN_NOTIFY = "off"
 # リネン発注案（火・金 9:00、祝日は前の平日）を SORA に出すか: on / off
 LINEN_ORDER = "on"
+# リネン業者（ゆーかさん）とのグループID。入れると［送る］で HARU が直接投稿する。空なら LINE の共有画面で手送り
+LINE_GROUP_LINEN = ""
 # FAQ自動返信したときのSORAへの1行通知: on / off
 AUTO_FAQ_NOTIFY = "on"
 
