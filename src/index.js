@@ -36,8 +36,13 @@ export default {
           await haru(env).reply(event.replyToken, `${sourceType}ID：\n${sourceIdOf(event)}`);
           return;
         }
-        // 清掃グループ以外のグループ（リネン業者とのグループ等）では、在庫の読み取りなどに一切反応しない
         const gid = event.source.groupId || event.source.roomId;
+        // 清掃委託先のグループ（物件登録・今日のボタン）
+        if (gid && env.KV && ![env.LINE_GROUP_FUJINOMIYA_WEEKDAY, env.LINE_GROUP_FUJINOMIYA_HOLIDAY, env.LINE_GROUP_SHIZUOKA, env.LINE_GROUP_LINEN].includes(gid)) {
+          const { handleContractorText } = await import("./contractor.js");
+          if (await handleContractorText(env, event, text)) return;
+        }
+        // 清掃グループ以外のグループ（リネン業者とのグループ等）では、在庫の読み取りなどに一切反応しない
         if (gid && ![env.LINE_GROUP_FUJINOMIYA_WEEKDAY, env.LINE_GROUP_FUJINOMIYA_HOLIDAY, env.LINE_GROUP_SHIZUOKA].includes(gid)) return;
         // リネン入力画面から送られた報告（在庫は画面側で反映済み）。返信（無料）で清掃終了ボタンを出す
         if (env.KV && text.startsWith("📝 リネン入力")) {
@@ -165,6 +170,10 @@ export default {
           const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
           const data = await res.json();
           return json({ model, max, size, systemChars: system.length, status: res.status, stop: data.stop_reason, usage: data.usage, blocks: (data.content || []).map(c => c.type), textHead: (data.content || []).filter(c => c.type === "text").map(c => c.text).join("").slice(0, 200), error: data.error || null });
+        }
+        if (path === "/admin/contractor") {
+          const m = await import("./contractor.js");
+          return json({ groups: await m.cgroup.all(env.KV), facilities: await m.cfac.all(env.KV) });
         }
         if (path === "/admin/morning-brief") {
           const m = await import("./brief.js");
@@ -306,6 +315,7 @@ export default {
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
       ctx.waitUntil(import("./cleanlog.js").then(m => m.runLinenPrompts(env)).catch(e => console.error("linen prompt", e.message)));
+      ctx.waitUntil(import("./contractor.js").then(m => m.runContractorButtons(env)).then(r => { if (r.out?.length) console.log("contractor buttons", JSON.stringify(r)); }).catch(e => console.error("contractor buttons", e.message)));
       ctx.waitUntil(import("./linen.js").then(m => m.remindLinen(env)).catch(e => console.error("linen remind", e.message)));
       ctx.waitUntil(import("./jobs.js").then(m => m.runJobs(env)).then(r => { if (r.ran) console.log("jobs", JSON.stringify(r)); }).catch(e => console.error("jobs error", e.message)));
       ctx.waitUntil(

@@ -8,6 +8,13 @@ const FACILITY = {
   "桜ハウス":     { checkin: "16:00", groups: ["LINE_GROUP_FUJINOMIYA_WEEKDAY", "LINE_GROUP_FUJINOMIYA_HOLIDAY"] },
   "nel.shizuoka": { checkin: "16:00", groups: ["LINE_GROUP_SHIZUOKA"] }
 };
+// 静的設定にない物件（清掃委託先グループに登録した物件）は KV から引く
+async function facOf(env, name) {
+  if (FACILITY[name]) return { ...FACILITY[name], propId: BEDS24_PROPERTIES[name]?.propId, label: name };
+  const { cfac } = await import("./contractor.js");
+  const c = await cfac.get(env.KV, name);
+  return c ? { checkin: c.checkin || "16:00", groupIds: c.groups || [], propId: c.propId, label: c.label || name } : null;
+}
 const EARLY_CUTOFF = "15:00";   // これより前に清掃が終わったときだけアーリーイン案内
 const EARLY_FROM = "09:00";     // 早朝・深夜の誤操作で案内しない
 const EARLY_OFFSET_MIN = 30;    // 終了から何分後に入れるか
@@ -32,7 +39,7 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
     if (i > 0) sections.push({ type: "separator", margin: "md" });
     // 物件名と、次のゲストの人数・泊数（リネンを用意する目安なので大きく）
     const lines = [{ type: "box", layout: "baseline", spacing: "md", margin: i > 0 ? "md" : "none", contents: [
-      { type: "text", text: f.name, weight: "bold", size: "lg", flex: 0 },
+      { type: "text", text: f.label || f.name, weight: "bold", size: "lg", flex: 0 },
       ...(f.guests ? [{ type: "text", text: f.guests, weight: "bold", size: "lg", color: "#d1477a", flex: 0 }] : [])
     ] }];
     if (f.text) lines.push(txt(f.text, { color: "#6b6b6b" }));
@@ -49,7 +56,7 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
     ] });
     sections.push(...lines);
   });
-  return { type: "flex", altText: `${title}：${facilities.map(f => f.name).join("・")}`, contents: {
+  return { type: "flex", altText: `${title}：${facilities.map(f => f.label || f.name).join("・")}`, contents: {
     type: "bubble", size: "mega",
     header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [{ type: "text", text: title, color: "#ffffff", weight: "bold", size: "md" }] },
     body: { type: "box", layout: "vertical", spacing: "xs", contents: sections }
@@ -57,10 +64,10 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
 }
 
 async function allowedGroup(env, facility, groupId, userId) {
-  const f = FACILITY[facility];
+  const f = await facOf(env, facility);
   if (!f) return false;
-  if (!groupId) { const { staffAllowed } = await import("./harucmd.js"); return staffAllowed(env, userId, facility); } // 個人チャットは担当エリアで判定
-  return f.groups.some(k => env[k] === groupId);
+  if (!groupId) { if (!FACILITY[facility]) return userId === env.OWNER_USER_ID; const { staffAllowed } = await import("./harucmd.js"); return staffAllowed(env, userId, facility); } // 個人チャットは担当エリアで判定
+  return (f.groups || []).some(k => env[k] === groupId) || (f.groupIds || []).includes(groupId);
 }
 
 /** HARU の postback を処理。清掃ボタン以外なら false */
@@ -129,8 +136,8 @@ export async function handleCleaningPostback(env, event) {
 
 /** 当日チェックインのゲストに「準備できました」を送る。15:00より前の終了のみ */
 async function notifySameDayGuest(env, facility, date, now, cur, { test = false, recDate = date } = {}) {
-  const f = FACILITY[facility];
-  const p = BEDS24_PROPERTIES[facility];
+  const f = await facOf(env, facility);
+  const p = f?.propId ? { propId: f.propId } : null;
   if (!f || !p) return { sent: false, reason: "物件設定なし" };
   const nowHm = hhmm(now);
   let arrivals;
@@ -166,7 +173,9 @@ async function notifySameDayGuest(env, facility, date, now, cur, { test = false,
 /** 本日の清掃状況（ダッシュボード用） */
 export async function todayCleaningStatus(env, date = formatDateYMD(new Date())) {
   const out = {};
-  for (const f of Object.keys(FACILITY)) out[f] = (await rec.get(env.KV, date, f)) || null;
+  const { cfac } = await import("./contractor.js");
+  const names = [...Object.keys(FACILITY), ...(await cfac.all(env.KV)).filter(c => (c.groups || []).length).map(c => c.name)];
+  for (const f of names) out[f] = (await rec.get(env.KV, date, f)) || null;
   return out;
 }
 

@@ -72,7 +72,7 @@ export async function dayData(env, date) {
     const ins = (gA[name] || []).map(fmtBooking), outs = (gD[name] || []).map(fmtBooking);
     kpi.in += ins.length; kpi.out += outs.length;
     const c = cleaning[name];
-    const hasButtons = !!BEDS24_PROPERTIES[name];
+    const hasButtons = name in cleaning; // 自社の3物件＋委託先グループに登録した物件
     let clean = { state: "none", text: "—" };
     if (outs.length) {
       kpi.clean++;
