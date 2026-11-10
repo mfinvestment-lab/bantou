@@ -128,7 +128,17 @@ const occupied = (bookings, date) => bookings.some(b => b.arrival < date && date
 
 // ---- 小屋（富士宮）・入荷待ち（静岡）の記録 ----
 const SHED = "linen:shed";
-export async function shedGet(env) { return (await env.KV.get(SHED, "json")) || {}; }
+// 11/10に手で送った発注（11/11納品）を一度だけ登録しておく（システム導入前の分）
+const SEED = { key: "linen:seed:20261111", items: { "サクヤ": { "シングルシーツ": 10, "シングルカバー": 10, "フェイスタオル": 40 }, "桜ハウス": { "バスタオル": 20, "フェイスタオル": 20 } } };
+export async function shedGet(env) {
+  const s = (await env.KV.get(SHED, "json")) || {};
+  if (!(await env.KV.get(SEED.key))) {
+    for (const [f, it] of Object.entries(SEED.items)) { s[f] ||= {}; for (const [n, q] of Object.entries(it)) s[f][n] = (s[f][n] || 0) + q; }
+    await env.KV.put(SHED, JSON.stringify(s));
+    await env.KV.put(SEED.key, "1");
+  }
+  return s;
+}
 async function shedAdd(env, f, items) {
   const s = await shedGet(env); s[f] ||= {};
   for (const [it, q] of Object.entries(items)) if (q > 0) s[f][it] = (s[f][it] || 0) + q;
@@ -237,7 +247,7 @@ function card(o, id) {
       body.push(T(`【${f.label}】清掃 ${cl}`, { color: "#555555", margin: "sm" }));
       for (const r of f.rows) {
         if (!r.qty && !r.short) continue;
-        const stock = `${r.sheet}${r.shed ? `+小屋${r.shed}` : ""}${r.pending ? `+入荷待${r.pending}` : ""}`;
+        const stock = `${r.sheet}${r.shed ? `+未補充${r.shed}` : ""}${r.pending ? `+入荷待${r.pending}` : ""}`;
         body.push(T(`${r.short ? "⚠️" : "・"}${r.item} 在庫${stock}−使用${r.before}=${r.projected} → +${r.qty}＝${r.after}（常備${r.par}${r.short ? `／次回まで${r.need}必要` : ""}）`, { color: r.short ? "#c0392b" : "#333333" }));
       }
     }
@@ -405,10 +415,10 @@ export async function handleLinenCommand(env, event, text) {
     await pushDraft(env, o, { reply: event.replyToken });
     return true;
   }
-  if (text === "小屋" || text === "小屋在庫") {
+  if (text === "小屋" || text === "小屋在庫" || text === "未補充") {
     const s = await shedGet(env);
     const lines = Object.entries(s).map(([f, it]) => `【${FAC[f]?.label || f}】\n` + (Object.entries(it).filter(([, q]) => q > 0).map(([n, q]) => `${n}　${q}`).join("\n") || "なし"));
-    await line.reply(event.replyToken, `🛖 物置小屋（発注済み・未補充）\n${lines.join("\n") || "なし"}\n\nスタッフが「補充」すると自動で減ります。合わないときは「小屋クリア」。`);
+    await line.reply(event.replyToken, `🛖 未補充（富士宮：発注したが、まだ施設に入れていない分）\n${lines.join("\n") || "なし"}\n\nスタッフが「補充」と報告すると自動で減ります。合わないときは「小屋クリア」。`);
     return true;
   }
   if (text.startsWith("小屋登録")) {
