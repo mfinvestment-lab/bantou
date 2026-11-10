@@ -31,7 +31,7 @@ const HELP = `HARU（清掃用）の使い方
 ・グループでは「開始」「終了」「今日」と送るだけでもボタンが出ます`;
 
 /** 1対1の HARU テキストコマンド。処理したら true */
-const GROUP_LOC = env => ({ [env.LINE_GROUP_FUJINOMIYA_WEEKDAY]: "富士宮", [env.LINE_GROUP_FUJINOMIYA_HOLIDAY]: "富士宮", [env.LINE_GROUP_SHIZUOKA]: "静岡" });
+export const GROUP_LOC = env => ({ [env.LINE_GROUP_FUJINOMIYA_WEEKDAY]: "富士宮", [env.LINE_GROUP_FUJINOMIYA_HOLIDAY]: "富士宮", [env.LINE_GROUP_SHIZUOKA]: "静岡" });
 const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定" };
 
 export async function handleHaruDirect(env, event) {
@@ -99,9 +99,10 @@ export async function handleHaruDirect(env, event) {
   if (text === "リネン入力" || text === "棚卸") {
     if (!me && !isOwner) { await needReg(); return true; }
     if (!env.LIFF_ID) { await line.reply(event.replyToken, "リネン入力は準備中です。今までどおりグループで知らせてください。"); return true; }
-    await line.replyRaw(event.replyToken, [{ type: "flex", altText: "リネン入力を開く", contents: { type: "bubble", size: "kilo",
-      body: { type: "box", layout: "vertical", contents: [{ type: "text", text: "リネン入力", weight: "bold" }, { type: "text", text: "使った枚数・補充・棚卸を入力できます。", size: "sm", color: "#666666", wrap: true, margin: "sm" }] },
-      footer: { type: "box", layout: "vertical", contents: [{ type: "button", style: "primary", action: { type: "uri", label: "入力画面を開く", uri: `https://liff.line.me/${env.LIFF_ID}` } }] } } }]);
+    // グループで呼ばれたら、そのグループの物件だけが出るようにグループIDを付ける
+    const { linenInputButton } = await import("./cleanlog.js");
+    const first = Object.keys(FACILITY_LOC).find(f => isOwner || FACILITY_LOC[f] === me.loc);
+    await line.replyRaw(event.replyToken, [linenInputButton(env, first, groupId, "使った枚数・補充・棚卸を入力できます。")]);
     return true;
   }
   if (text === "足りない物") {

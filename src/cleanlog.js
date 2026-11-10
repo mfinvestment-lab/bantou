@@ -74,7 +74,13 @@ export async function handleCleaningPostback(env, event) {
     if (cur.startAt) { await line.reply(event.replyToken, `${facility} は ${hhmm(new Date(cur.startAt))} に${cur.startBy}さんが開始済みです。`); return true; }
     cur.startAt = now.toISOString(); cur.startBy = who; cur.startUser = userId;
     await rec.put(env.KV, date, facility, cur);
-    await line.reply(event.replyToken, `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）`);
+    // 返信（無料）にリネン入力ボタンを付ける。1時間後の通知は LINEN_PROMPT_PUSH=on のときだけ（グループ宛ては人数分の通数になるため）
+    const msgs = [{ type: "text", text: `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）` }];
+    if (env.LIFF_ID && !test) msgs.push(linenInputButton(env, facility, groupId, "清掃が終わりに近づいたら、使ったリネンの枚数を入力してください。"));
+    await line.replyRaw(event.replyToken, msgs);
+    if (env.LINEN_PROMPT_PUSH === "on" && !test && groupId) {
+      await env.KV.put(`linenprompt:${params.get("d")}:${facility}`, JSON.stringify({ groupId, due: now.getTime() + 60 * 60000 }), { expirationTtl: 60 * 60 * 12 });
+    }
     return true;
   }
   if (act === "cend") {
@@ -154,4 +160,32 @@ export async function todayCleaningStatus(env, date = formatDateYMD(new Date()))
   const out = {};
   for (const f of Object.keys(FACILITY)) out[f] = (await rec.get(env.KV, date, f)) || null;
   return out;
+}
+
+/** リネン入力画面を開くボタン（g＝グループIDで表示する物件を絞る、f＝最初に選ぶ物件） */
+export function linenInputButton(env, facility, groupId, note) {
+  const q = new URLSearchParams({ f: facility }); if (groupId) q.set("g", groupId);
+  return { type: "flex", altText: `${facility} リネン入力`, contents: { type: "bubble", size: "kilo",
+    body: { type: "box", layout: "vertical", contents: [{ type: "text", text: `${facility} リネン入力`, weight: "bold" }, { type: "text", text: note, size: "sm", color: "#666666", wrap: true, margin: "sm" }] },
+    footer: { type: "box", layout: "vertical", contents: [{ type: "button", style: "primary", height: "sm", action: { type: "uri", label: "リネン入力を開く", uri: `https://liff.line.me/${env.LIFF_ID}?${q}` } }] } } };
+}
+/** 清掃終了ボタンだけのカード（リネン入力のあとに出す） */
+export function cleanEndButton(facility, date, note = "清掃が終わったら押してください。") {
+  return { type: "flex", altText: `${facility} 清掃終了`, contents: { type: "bubble", size: "kilo",
+    body: { type: "box", layout: "vertical", contents: [{ type: "text", text: note, size: "sm", wrap: true }] },
+    footer: { type: "box", layout: "vertical", contents: [pb("清掃終了", `act=cend&f=${encodeURIComponent(facility)}&d=${date}`, "primary")] } } };
+}
+/** 5分ごと：清掃開始から1時間たって、まだリネン入力も終了もしていなければリネン入力ボタンを送る（LINEN_PROMPT_PUSH=on のとき） */
+export async function runLinenPrompts(env) {
+  if (env.LINEN_PROMPT_PUSH !== "on" || !env.KV) return;
+  const l = await env.KV.list({ prefix: "linenprompt:" });
+  for (const k of l.keys) {
+    const v = await env.KV.get(k.name, "json"); if (!v || v.due > Date.now()) continue;
+    await env.KV.delete(k.name);
+    const [, date, facility] = k.name.split(":");
+    const cur = await rec.get(env.KV, date, facility);
+    if (cur?.endAt) continue;
+    if (await env.KV.get(`linenuse:${date}:${facility}`)) continue;
+    try { await haru(env).pushMessages(v.groupId, [linenInputButton(env, facility, v.groupId, "清掃開始から1時間たちました。使ったリネンの枚数を入力してください。")]); } catch (e) { console.error("linen prompt", e.message); }
+  }
 }

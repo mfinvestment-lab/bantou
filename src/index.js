@@ -36,6 +36,19 @@ export default {
         // 清掃グループ以外のグループ（リネン業者とのグループ等）では、在庫の読み取りなどに一切反応しない
         const gid = event.source.groupId || event.source.roomId;
         if (gid && ![env.LINE_GROUP_FUJINOMIYA_WEEKDAY, env.LINE_GROUP_FUJINOMIYA_HOLIDAY, env.LINE_GROUP_SHIZUOKA].includes(gid)) return;
+        // リネン入力画面から送られた報告（在庫は画面側で反映済み）。返信（無料）で清掃終了ボタンを出す
+        if (env.KV && text.startsWith("📝 リネン入力")) {
+          const m = text.match(/^📝 リネン入力（(.+?)・(.+?)）/);
+          const fac = m && { "サクヤ": "サクヤ", "桜ハウス": "桜ハウス", "nel.": "nel.shizuoka" }[m[1]];
+          if (fac && m[2] === "使った枚数") {
+            const { cleanEndButton, todayCleaningStatus } = await import("./cleanlog.js");
+            const { formatDateYMD } = await import("./beds24.js");
+            const d = formatDateYMD(new Date());
+            const st = (await todayCleaningStatus(env, d))[fac];
+            if (!st?.endAt) await haru(env).replyRaw(event.replyToken, [cleanEndButton(fac, d, `${fac} のリネン入力ありがとうございます。清掃が終わったら押してください。`)]);
+          }
+          return;
+        }
         if (env.KV && (await handleHaruDirect(env, event))) return;
         await handleInventoryMessage(env, text, event.replyToken, event.source.userId);
       });
@@ -289,6 +302,7 @@ export default {
       ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
+      ctx.waitUntil(import("./cleanlog.js").then(m => m.runLinenPrompts(env)).catch(e => console.error("linen prompt", e.message)));
       ctx.waitUntil(import("./linen.js").then(m => m.remindLinen(env)).catch(e => console.error("linen remind", e.message)));
       ctx.waitUntil(import("./jobs.js").then(m => m.runJobs(env)).then(r => { if (r.ran) console.log("jobs", JSON.stringify(r)); }).catch(e => console.error("jobs error", e.message)));
       ctx.waitUntil(

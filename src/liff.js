@@ -26,9 +26,19 @@ async function verifyIdToken(env, idToken) {
 const gasGet = (env, facility) => fetch(`${env.GAS_URL}?action=get&facility=${encodeURIComponent(facility)}`).then(r => r.json());
 const gasPost = (env, body) => fetch(env.GAS_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
 
-async function who(env, idToken) {
+async function who(env, idToken, groupId) {
   const u = await verifyIdToken(env, idToken);
   if (!u) return { error: "ログイン情報を確認できません", status: 401 };
+  // 清掃グループのボタンから開いたとき：そのグループのメンバーなら、グループのエリアの物件だけ
+  if (groupId) {
+    const { GROUP_LOC } = await import("./harucmd.js");
+    const loc = GROUP_LOC(env)[groupId];
+    if (loc) {
+      const { haru } = await import("./line.js");
+      const member = u.userId === env.OWNER_USER_ID || (await haru(env).memberName(groupId, u.userId)) !== null;
+      if (member) return { u, me: { loc } };
+    }
+  }
   const me = u.userId === env.OWNER_USER_ID ? { loc: "*" } : await staff.get(env.KV, u.userId);
   if (!me) return { error: "担当エリアが未登録です。HARUに「登録」と送ってください", status: 403 };
   return { u, me };
@@ -41,8 +51,8 @@ export async function handleLiff(request, env, url) {
     return new Response(PAGE.replace("__LIFF_ID__", env.LIFF_ID), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" } });
   }
   if (path === "/liff/linen/me" && request.method === "POST") {
-    const { idToken } = await request.json();
-    const w = await who(env, idToken);
+    const { idToken, g } = await request.json();
+    const w = await who(env, idToken, g);
     if (w.error) return json({ error: w.error }, w.status);
     const L = await import("./linen.js");
     const facilities = Object.keys(FACILITY_LOC).filter(f => w.me.loc === "*" || FACILITY_LOC[f] === w.me.loc);
@@ -63,8 +73,8 @@ export async function handleLiff(request, env, url) {
     return json({ name: w.u.name, facilities, data: out });
   }
   if (path === "/liff/linen/submit" && request.method === "POST") {
-    const { idToken, facility, counts, mode, shedEmpty } = await request.json();
-    const w = await who(env, idToken);
+    const { idToken, facility, counts, mode, shedEmpty, g } = await request.json();
+    const w = await who(env, idToken, g);
     if (w.error) return json({ error: w.error }, w.status);
     if (!(w.me.loc === "*" || FACILITY_LOC[facility] === w.me.loc)) return json({ error: "この物件の入力権限がありません" }, 403);
     const name = (await staff.get(env.KV, w.u.userId))?.name || w.u.name || "スタッフ";
@@ -126,7 +136,7 @@ select{font-size:18px;padding:10px;border:1px solid #ccc;border-radius:8px;width
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 const LIFF_ID="__LIFF_ID__";
-let D=null,idToken=null,mode="use";
+let D=null,idToken=null,mode="use",P=null;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function main(){
@@ -134,10 +144,13 @@ async function main(){
     await liff.init({liffId:LIFF_ID});
     if(!liff.isLoggedIn()){liff.login();return;}
     idToken=liff.getIDToken();
-    const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken})});
+    P=new URLSearchParams(location.search);
+    const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||''})});
     D=await r.json();
     if(D.error){$('#app').innerHTML='<p class="err">'+esc(D.error)+'</p>';return;}
     $('#app').innerHTML='<select id="fac">'+D.facilities.map(f=>'<option value="'+esc(f)+'">'+esc(D.data[f].label)+'</option>').join('')+'</select><div class="tabs" id="tabs"></div><div id="body"></div><button class="send" id="send">送信</button><div id="out"></div>';
+    if(P.get('f')&&D.facilities.includes(P.get('f'))) $('#fac').value=P.get('f');
+    if(D.facilities.length===1) $('#fac').style.display='none';
     $('#fac').onchange=()=>{ if(mode==='restock'&&!D.data[$('#fac').value].shed) mode='use'; draw(); };
     $('#send').onclick=send;
     draw();
@@ -178,12 +191,22 @@ async function send(){
   if(!lines){alert('枚数が入っていません');return;}
   if(!confirm(D.data[f].label+' の'+title+'を送信します\\n\\n'+lines))return;
   btn.disabled=true;btn.textContent='送信中…';
-  const r=await fetch('/liff/linen/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,facility:f,counts,mode,shedEmpty:!!($('#shedEmpty')&&$('#shedEmpty').checked)})});
+  const r=await fetch('/liff/linen/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||'',facility:f,counts,mode,shedEmpty:!!($('#shedEmpty')&&$('#shedEmpty').checked)})});
   const j=await r.json();
   $('#out').innerHTML='<div class="msg'+(j.error?' err':'')+'">'+esc(j.error||('✅ '+j.message))+'</div>';
   if(j.error){btn.disabled=false;btn.textContent='もう一度送信';return;}
   btn.textContent='送信済み';
-  setTimeout(()=>{ if(liff.isInClient()) liff.closeWindow(); },3000);
+  // トークに入力内容を送る（グループのみんなが見られる。使った枚数なら返信で清掃終了ボタンが出る）
+  let posted=false;
+  try{
+    const ctx=liff.isInClient()?liff.getContext():null;
+    if(ctx&&['group','room','utou'].includes(ctx.type)){
+      await liff.sendMessages([{type:'text',text:'📝 リネン入力（'+D.data[f].label+'・'+title.replace(/（.*）/,'')+'）\n'+lines}]);
+      posted=true;
+    }
+  }catch(e){}
+  if(!posted&&mode==='use') $('#out').innerHTML+='<div class="msg">清掃が終わったら、トークで「終了」と送るか清掃終了ボタンを押してください。</div>';
+  setTimeout(()=>{ if(liff.isInClient()) liff.closeWindow(); },posted?800:3000);
 }
 main();
 </script></body></html>`;
