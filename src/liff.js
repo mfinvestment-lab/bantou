@@ -61,11 +61,11 @@ export async function handleLiff(request, env, url) {
     for (const f of facilities) {
       let stock = {};
       try { const s = await gasGet(env, f); stock = Object.fromEntries((s.items || []).map(it => [it.name, it.current])); } catch {}
-      let estimate = null; try { estimate = await L.estimateToday(env, f); } catch {}
+      let next = null; try { next = await L.nextGuest(env, f); } catch {}
       out[f] = {
         label: LABEL[f], area: FACILITY_LOC[f],
         items: Object.keys(L.FAC[f].par),
-        stock, estimate,
+        stock, next,
         shed: FACILITY_LOC[f] === "富士宮" ? (shed[f] || {}) : null,
         usedToday: await L.usageLogged(env, f)
       };
@@ -112,12 +112,15 @@ const PAGE = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta n
 <style>
 body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:#f4f4f4;color:#222}
 .wrap{padding:16px;max-width:520px;margin:0 auto}
-h1{font-size:18px;margin:0 0 12px}
-select{font-size:18px;padding:10px;border:1px solid #ccc;border-radius:8px;width:100%;box-sizing:border-box;background:#fff}
+.pick p{font-size:16px;margin:4px 0 12px}
+.pick button{display:block;width:100%;font-size:22px;font-weight:bold;padding:22px;border:0;border-radius:12px;color:#fff;margin:0 0 12px}
+.head{border-radius:12px;color:#fff;padding:14px 16px;font-size:24px;font-weight:bold;display:flex;justify-content:space-between;align-items:center}
+.head a{color:#fff;font-size:13px;font-weight:normal;text-decoration:underline}
 .tabs{display:flex;gap:6px;margin:12px 0 4px}
-.tabs button{flex:1;margin:0;padding:12px 4px;font-size:16px;background:#fff;color:#333;border:2px solid #ddd}
-.tabs button.on{background:#06c755;color:#fff;border-color:#06c755}
-.hint{font-size:13px;color:#555;background:#fff;border-radius:10px;padding:10px 12px;margin:8px 0;line-height:1.6}
+.tabs button{flex:1;margin:0;padding:12px 4px;font-size:16px;background:#fff;color:#333;border:2px solid #ddd;border-radius:10px}
+.tabs button.on{background:#333;color:#fff;border-color:#333}
+.hint{font-size:14px;color:#333;background:#fff;border-radius:10px;padding:10px 12px;margin:8px 0;line-height:1.7}
+.big{font-size:18px;font-weight:bold}
 .warn{background:#fff4e5;color:#8a4b00}
 .row{display:flex;align-items:center;background:#fff;border-radius:10px;padding:8px 12px;margin:6px 0}
 .row label{flex:1;font-size:16px}
@@ -125,18 +128,16 @@ select{font-size:18px;padding:10px;border:1px solid #ccc;border-radius:8px;width
 .row input{width:90px;font-size:20px;padding:8px;border:1px solid #ccc;border-radius:8px;text-align:right}
 .chk{display:flex;gap:8px;align-items:center;background:#fff;border-radius:10px;padding:12px;margin:8px 0;font-size:15px}
 .chk input{width:22px;height:22px}
-.send{width:100%;font-size:18px;padding:14px;border:0;border-radius:10px;background:#06c755;color:#fff;margin-top:12px}
-.send:disabled{background:#aaa}
+.send{width:100%;font-size:18px;padding:14px;border:0;border-radius:10px;color:#fff;margin-top:12px}
+.send:disabled{background:#aaa!important}
 .msg{white-space:pre-wrap;background:#fff;border-radius:10px;padding:12px;margin-top:12px}
 .err{color:#c00}
-</style></head><body><div class="wrap">
-<h1>リネン入力</h1>
-<div id="app">読み込み中…</div>
-</div>
+</style></head><body><div class="wrap"><div id="app">読み込み中…</div></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 const LIFF_ID="__LIFF_ID__";
-let D=null,idToken=null,mode="use",P=null;
+const COLOR={"サクヤ":"#1e5fb4","桜ハウス":"#d1477a","nel.shizuoka":"#2e8b57"};
+let D=null,idToken=null,mode="use",P=null,F=null,locked=false;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function main(){
@@ -148,50 +149,56 @@ async function main(){
     const r=await fetch('/liff/linen/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||''})});
     D=await r.json();
     if(D.error){$('#app').innerHTML='<p class="err">'+esc(D.error)+'</p>';return;}
-    $('#app').innerHTML='<select id="fac">'+D.facilities.map(f=>'<option value="'+esc(f)+'">'+esc(D.data[f].label)+'</option>').join('')+'</select><div class="tabs" id="tabs"></div><div id="body"></div><button class="send" id="send">送信</button><div id="out"></div>';
-    if(P.get('f')&&D.facilities.includes(P.get('f'))) $('#fac').value=P.get('f');
-    if(D.facilities.length===1) $('#fac').style.display='none';
-    $('#fac').onchange=()=>{ if(mode==='restock'&&!D.data[$('#fac').value].shed) mode='use'; draw(); };
-    $('#send').onclick=send;
-    draw();
+    // 清掃カードの［② リネン］から開いたときは、その物件に固定（取り違え防止）
+    if(P.get('f')&&D.facilities.includes(P.get('f'))){F=P.get('f');locked=true;}
+    else if(D.facilities.length===1){F=D.facilities[0];locked=true;}
+    F?draw():pick();
   }catch(e){$('#app').innerHTML='<p class="err">エラー: '+esc(e.message)+'</p>';}
 }
+// 物件を選ぶ画面（最初から選ばれた状態にはしない）
+function pick(){
+  $('#app').innerHTML='<div class="pick"><p>どちらの物件ですか？</p>'+D.facilities.map(f=>'<button data-f="'+esc(f)+'" style="background:'+COLOR[f]+'">'+esc(D.data[f].label)+'</button>').join('')+'</div>';
+  document.querySelectorAll('.pick button').forEach(b=>b.onclick=()=>{F=b.dataset.f;mode='use';draw();});
+}
 function draw(){
-  const f=$('#fac').value, d=D.data[f];
+  const d=D.data[F];
   const tabs=[['use','使った枚数'],['restock','補充'],['count','棚卸']].filter(t=>t[0]!=='restock'||d.shed);
-  $('#tabs').innerHTML=tabs.map(t=>'<button class="'+(mode===t[0]?'on':'')+'" data-m="'+t[0]+'">'+t[1]+'</button>').join('');
-  document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;draw();});
-  let hint='',init={},side={};
+  if(!tabs.some(t=>t[0]===mode)) mode='use';
+  let html='<div class="head" style="background:'+COLOR[F]+'"><span>'+esc(d.label)+'</span>'+(locked?'':'<a href="#" id="chg">物件を変える</a>')+'</div>';
+  html+='<div class="tabs">'+tabs.map(t=>'<button class="'+(mode===t[0]?'on':'')+'" data-m="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>';
+  let hint='',init={},side={},sideLabel='在庫';
   if(mode==='use'){
-    hint=d.estimate?'清掃のあと、使った枚数を入れてください。<br>今日のアウト：'+d.estimate.n+'名'+d.estimate.k+'泊（見込みを入れてあります。実際の枚数に直してください）':'清掃のあと、使った枚数を入れてください。<br>今日のアウトはありません（臨時の清掃なら入力してください）';
+    const n=d.next;
+    hint=n?(n.full?'<span class="big">次の予約まで間があるので、定員'+n.n+'名×1泊でセット</span>'+(n.arrivalLabel?'<br>（次の到着 '+esc(n.arrivalLabel)+' '+n.nextN+'名'+n.nextK+'泊）':''):'<span class="big">次のゲスト：'+esc(n.arrivalLabel)+' '+n.n+'名'+n.k+'泊</span>'):'';
+    hint+='<br>使った枚数を入れてください。';
     if(d.usedToday) hint+='<div class="hint warn">今日はすでに入力済みです：'+Object.entries(d.usedToday).map(([k,v])=>esc(k)+v).join('・')+'<br>追加分だけ入れてください（同じ数を入れると二重になります）</div>';
-    init=d.usedToday?{}:(d.estimate?d.estimate.items:{});
     side=d.stock;
   }else if(mode==='restock'){
     const has=Object.values(d.shed).some(v=>v>0);
-    hint='物置小屋から施設に運んだ枚数を入れてください。<br>'+(has?'まだ運んでいない分（未補充）を入れてあります。':'未補充の分はありません。');
-    init=d.shed; side=d.shed;
+    hint='物置小屋から<b>'+esc(d.label)+'</b>に運んだ枚数を入れてください。<br>'+(has?'まだ運んでいない分（未補充）を入れてあります。':'未補充の分はありません。');
+    init=d.shed; side=d.shed; sideLabel='未補充';
   }else{
-    hint='棚にある枚数を数えて入れてください（2週間に1回）。<br>空欄の品目は変更しません。';
+    hint='<b>'+esc(d.label)+'</b>の棚にある枚数を数えて入れてください（2週間に1回）。<br>空欄の品目は変更しません。';
     init=d.stock; side=d.stock;
   }
-  const sideLabel=mode==='restock'?'未補充':'在庫';
-  let html='<div class="hint">'+hint+'</div>';
-  html+=d.items.map(n=>'<div class="row"><label>'+esc(n)+'</label><small>'+sideLabel+'<br>'+(side&&side[n]!=null?side[n]:'-')+'</small><input type="number" inputmode="numeric" min="0" data-n="'+esc(n)+'" value="'+(init&&init[n]!=null&&init[n]!==0?init[n]:(mode==='count'&&init&&init[n]===0?0:''))+'"></div>').join('');
+  html+='<div class="hint">'+hint+'</div>';
+  html+=d.items.map(n=>'<div class="row"><label>'+esc(n)+'</label><small>'+sideLabel+'<br>'+(side&&side[n]!=null?side[n]:'-')+'</small><input type="number" inputmode="numeric" min="0" data-n="'+esc(n)+'" value="'+(init&&init[n]!=null&&(init[n]!==0||mode==='count')?init[n]:'')+'"></div>').join('');
   if(mode==='count'&&d.shed&&Object.values(d.shed).some(v=>v>0)) html+='<label class="chk"><input type="checkbox" id="shedEmpty"> 小屋は空（届いた分はすべて施設に運んだ）</label>';
-  $('#body').innerHTML=html;
-  $('#send').disabled=false;$('#send').textContent={use:'使った枚数を送信',restock:'補充を送信',count:'棚卸を送信'}[mode];
-  $('#out').innerHTML='';
+  html+='<button class="send" id="send" style="background:'+COLOR[F]+'">'+esc(d.label)+' の'+{use:'使った枚数',restock:'補充',count:'棚卸'}[mode]+'を送信</button><div id="out"></div>';
+  $('#app').innerHTML=html;
+  document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;draw();});
+  if($('#chg')) $('#chg').onclick=e=>{e.preventDefault();F=null;pick();};
+  $('#send').onclick=send;
 }
 async function send(){
-  const f=$('#fac').value, btn=$('#send');
+  const btn=$('#send'), d=D.data[F];
   const counts={};document.querySelectorAll('input[data-n]').forEach(i=>counts[i.dataset.n]=i.value);
   const lines=Object.entries(counts).filter(([,v])=>v!=='').map(([k,v])=>k+' '+v).join('\\n');
-  const title={use:'使った枚数',restock:'補充',count:'棚卸（今ある枚数）'}[mode];
+  const title={use:'使った枚数',restock:'補充',count:'棚卸'}[mode];
   if(!lines){alert('枚数が入っていません');return;}
-  if(!confirm(D.data[f].label+' の'+title+'を送信します\\n\\n'+lines))return;
+  if(!confirm('【'+d.label+'】の'+title+'を送信します。\\n物件はまちがいないですか？\\n\\n'+lines))return;
   btn.disabled=true;btn.textContent='送信中…';
-  const r=await fetch('/liff/linen/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||'',facility:f,counts,mode,shedEmpty:!!($('#shedEmpty')&&$('#shedEmpty').checked)})});
+  const r=await fetch('/liff/linen/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idToken,g:P.get('g')||'',facility:F,counts,mode,shedEmpty:!!($('#shedEmpty')&&$('#shedEmpty').checked)})});
   const j=await r.json();
   $('#out').innerHTML='<div class="msg'+(j.error?' err':'')+'">'+esc(j.error||('✅ '+j.message))+'</div>';
   if(j.error){btn.disabled=false;btn.textContent='もう一度送信';return;}
@@ -201,7 +208,7 @@ async function send(){
   try{
     const ctx=liff.isInClient()?liff.getContext():null;
     if(ctx&&['group','room','utou'].includes(ctx.type)){
-      await liff.sendMessages([{type:'text',text:'📝 リネン入力（'+D.data[f].label+'・'+title.replace(/（.*）/,'')+'）\\n'+lines}]);
+      await liff.sendMessages([{type:'text',text:'📝 リネン入力（'+d.label+'・'+title+'）\\n'+lines}]);
       posted=true;
     }
   }catch(e){}

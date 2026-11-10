@@ -111,12 +111,25 @@ function usage(f, n, nights) {
 const guestsOf = b => (b.numAdult || 0) + (b.numChild || 0);
 const nightsOf = b => Math.max(1, Math.round((toD(b.departure) - toD(b.arrival)) / 86400e3));
 
-/** 清掃（＝出発日）ごとに使う数。出発するゲストの人数・泊数で見る（スタッフの「リネン使用数」報告と同じ基準） */
-function cleanings(f, bookings, from, to) {
+/**
+ * date の清掃で次のゲスト用にセットする人数・泊数（朝の清掃通知と同じ決め方）
+ *   当日か翌日に到着がある → その予約の人数・泊数
+ *   それより先 → 「定員×1泊」と「次の予約の人数×泊数」の大きい方
+ *   次の予約なし → 定員×1泊
+ */
+export function setupFor(f, bookings, date) {
   const max = BEDS24_PROPERTIES[f]?.maxGuests || 1;
+  const next = bookings.filter(b => b.arrival >= date).sort((a, c) => a.arrival.localeCompare(c.arrival))[0];
+  if (!next) return { n: max, k: 1, arrival: null, full: true };
+  const nn = Math.min(max, guestsOf(next) || max), nk = nightsOf(next);
+  if (next.arrival <= add(date, 1)) return { n: nn, k: nk, arrival: next.arrival, full: false };
+  return max * 1 >= nn * nk ? { n: max, k: 1, arrival: next.arrival, full: true, nextN: nn, nextK: nk } : { n: nn, k: nk, arrival: next.arrival, full: false };
+}
+/** 清掃（＝出発日）ごとに使う数。次のゲスト用にセットする数で見る */
+function cleanings(f, bookings, from, to) {
   return bookings.filter(b => b.departure >= from && b.departure <= to).map(b => {
-    const n = Math.min(max, guestsOf(b) || max), k = nightsOf(b);
-    return { date: b.departure, n, k, basis: `${n}名${k}泊`, use: usage(f, n, k) };
+    const st = setupFor(f, bookings.filter(x => x.id !== b.id), b.departure);
+    return { date: b.departure, n: st.n, k: st.k, basis: st.full ? `次まで間あり→定員${st.n}名×1泊` : `次 ${md(st.arrival)} ${st.n}名${st.k}泊`, use: usage(f, st.n, st.k) };
   });
 }
 const sumUse = (cl, from, to) => {
@@ -458,13 +471,13 @@ export async function usageReport(env, days = 30) {
   const token = await getToken(env), today = todayJST(), from = add(today, -days);
   const rows = [];
   for (const f of Object.keys(FAC)) {
-    const bk = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${from}&departureTo=${today}`)).filter(b => b.status !== "cancelled" && b.status !== "black");
+    const bk = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${from}&arrivalTo=${add(today, 60)}`)).filter(b => b.status !== "cancelled" && b.status !== "black");
     for (let d = from; d <= today; d = add(d, 1)) {
       const rep = await env.KV.get(`linenuse:${d}:${f}`, "json");
       if (!rep) continue;
-      const b = bk.find(x => x.departure === d);
-      const n = b ? guestsOf(b) : null, k = b ? nightsOf(b) : null;
-      const est = b ? usage(f, n, k) : null;
+      const st = setupFor(f, bk, d);
+      const n = st.n, k = st.k;
+      const est = usage(f, n, k);
       rows.push({ date: d, facility: f, guests: n, nights: k, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, { reported: rep[it] ?? null, model: est ? est[it] : null }])) });
     }
   }
@@ -473,13 +486,11 @@ export async function usageReport(env, days = 30) {
 
 export const bedUseFor = (f, n) => bedUse(FAC[f].bed, n);
 
-/** 今日チェックアウトする予約から、使う枚数の見込み（リネン入力画面の初期値） */
-export async function estimateToday(env, f) {
+/** リネン入力画面用：今日の清掃でセットする「次のゲスト」の人数・泊数 */
+export async function nextGuest(env, f) {
   const token = await getToken(env), d = todayJST();
-  const b = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${d}&departureTo=${d}`)).filter(x => x.status !== "cancelled" && x.status !== "black")[0];
-  if (!b) return null;
-  const max = BEDS24_PROPERTIES[f]?.maxGuests || 1, n = Math.min(max, guestsOf(b) || max), k = nightsOf(b);
-  const u = usage(f, n, k);
-  return { n, k, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, u[it] || 0])) };
+  const bk = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&arrivalFrom=${d}&arrivalTo=${add(d, 60)}`)).filter(x => x.status !== "cancelled" && x.status !== "black");
+  const st = setupFor(f, bk, d);
+  return { ...st, arrivalLabel: st.arrival ? mdw(st.arrival) : null };
 }
 export async function usageLogged(env, f, d = todayJST()) { return env.KV.get(`linenuse:${d}:${f}`, "json"); }
