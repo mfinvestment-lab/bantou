@@ -61,6 +61,26 @@ export async function handleHaruDirect(env, event) {
     return true;
   }
   if (text === "ヘルプ" || text === "help") { await line.reply(event.replyToken, HELP); return true; }
+  // 清掃カードの見本（オーナーの1対1のみ）。ボタンは押しても何も起きない
+  if (text === "カード見本" && isOwner) {
+    const { cleaningButtonsMessage } = await import("./cleanlog.js");
+    const d = formatDateYMD(new Date());
+    const rows = [
+      { name: "サクヤ", text: "チェックアウト 10:00 → 次の到着 本日 16:00（当日イン）", linen: "" },
+      { name: "桜ハウス", text: "チェックアウト 10:00 → 次の到着 11/16 16:00", linen: "" }
+    ];
+    // 見本なので全ボタンを「見本です」の返事だけにする
+    const dummy = m => JSON.parse(JSON.stringify(m), (k, v) => (v && typeof v === "object" && v.type === "button" ? { ...v, action: { type: "postback", label: v.action.label, data: "act=sample", displayText: v.action.label } } : v));
+    const opt = { liffId: env.LIFF_ID || "x", groupId: null };
+    await line.replyRaw(event.replyToken, [
+      { type: "text", text: "【見本A】今の形：1枚のカードに2物件" },
+      dummy(cleaningButtonsMessage(d, rows, opt)),
+      { type: "text", text: "【見本B】物件ごとにカードを分ける形（通数は同じ）" },
+      dummy(cleaningButtonsMessage(d, [rows[0]], opt)),
+      dummy(cleaningButtonsMessage(d, [rows[1]], opt))
+    ]);
+    return true;
+  }
 
   const needReg = async () => { await line.replyRaw(event.replyToken, [{ type: "text", text: "はじめに担当エリアを登録してください。", quickReply: { items: LOCATIONS.map(l => qr(l, `登録 ${l}`)) } }]); };
 

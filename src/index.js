@@ -25,7 +25,10 @@ export default {
     if (request.method === "POST" && (path === "/haru/webhook" || path === "/")) {
       // "/" は旧番頭との互換（LINE側のWebhook URLを切り替えるまでの間）
       return handleWebhook(request, ctx, haru(env), async event => {
-        if (event.type === "postback") { await handleCleaningPostback(env, event); return; }
+        if (event.type === "postback") {
+          if (event.postback?.data === "act=sample") { await haru(env).reply(event.replyToken, "見本のボタンです（何も記録されません）"); return; }
+          await handleCleaningPostback(env, event); return;
+        }
         if (event.type !== "message" || event.message.type !== "text") return;
         const text = event.message.text.trim();
         if (text === "グループID教えて") {
