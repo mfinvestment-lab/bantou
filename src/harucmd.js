@@ -101,8 +101,9 @@ export async function handleHaruDirect(env, event) {
     if (!env.LIFF_ID) { await line.reply(event.replyToken, "リネン入力は準備中です。今までどおりグループで知らせてください。"); return true; }
     // グループで呼ばれたら、そのグループの物件だけが出るようにグループIDを付ける
     const { linenInputButton } = await import("./cleanlog.js");
-    const first = Object.keys(FACILITY_LOC).find(f => isOwner || FACILITY_LOC[f] === me.loc);
-    await line.replyRaw(event.replyToken, [linenInputButton(env, first, groupId, "使った枚数・補充・棚卸を入力できます。")]);
+    // 物件が1つのエリア（静岡）はその物件で開く。富士宮は画面で物件を選んでもらう（取り違え防止）
+    const mine = Object.keys(FACILITY_LOC).filter(f => isOwner ? true : FACILITY_LOC[f] === me.loc);
+    await line.replyRaw(event.replyToken, [linenInputButton(env, mine.length === 1 ? mine[0] : null, groupId, "使った枚数・補充・棚卸を入力できます。")]);
     return true;
   }
   if (text === "足りない物") {

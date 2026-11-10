@@ -166,9 +166,10 @@ export async function todayCleaningStatus(env, date = formatDateYMD(new Date()))
 
 /** リネン入力画面を開くボタン（g＝グループIDで表示する物件を絞る、f＝最初に選ぶ物件） */
 export function linenInputButton(env, facility, groupId, note) {
-  const q = new URLSearchParams({ f: facility }); if (groupId) q.set("g", groupId);
-  return { type: "flex", altText: `${facility} リネン入力`, contents: { type: "bubble", size: "kilo",
-    body: { type: "box", layout: "vertical", contents: [{ type: "text", text: `${facility} リネン入力`, weight: "bold" }, { type: "text", text: note, size: "sm", color: "#666666", wrap: true, margin: "sm" }] },
+  // facility を渡すと画面がその物件に固定される。null なら画面で物件を選ぶ
+  const q = new URLSearchParams(); if (facility) q.set("f", facility); if (groupId) q.set("g", groupId);
+  return { type: "flex", altText: `${facility || ""} リネン入力`, contents: { type: "bubble", size: "kilo",
+    body: { type: "box", layout: "vertical", contents: [{ type: "text", text: `${facility ? facility + " " : ""}リネン入力`, weight: "bold" }, { type: "text", text: note, size: "sm", color: "#666666", wrap: true, margin: "sm" }] },
     footer: { type: "box", layout: "vertical", contents: [{ type: "button", style: "primary", height: "sm", action: { type: "uri", label: "リネン入力を開く", uri: `https://liff.line.me/${env.LIFF_ID}?${q}` } }] } } };
 }
 /** 清掃終了ボタンだけのカード（リネン入力のあとに出す） */
