@@ -386,6 +386,22 @@ export async function handleLinenCommand(env, event, text) {
     await line.reply(event.replyToken, `🛖 物置小屋（発注済み・未補充）\n${lines.join("\n") || "なし"}\n\nスタッフが「補充」すると自動で減ります。合わないときは「小屋クリア」。`);
     return true;
   }
+  if (text.startsWith("小屋登録")) {
+    // 手で送った発注（いつもの書式をそのまま貼る）を小屋に加える。富士宮の物件だけ対象
+    const add = {}; let cur = null;
+    for (const raw of text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).split("\n").slice(1)) {
+      const l = raw.trim(); if (!l) continue;
+      const it = ITEMS.find(i => l.includes(i));
+      const fk = Object.keys(NAME_MAP).find(k => l.includes(k));
+      if (fk && !it) { cur = NAME_MAP[fk]; continue; }
+      const m = l.match(/(\d+)\s*$/);
+      if (it && m && cur && FAC[cur].area === "富士宮" && Number(m[1]) > 0) (add[cur] ||= {})[it] = (add[cur]?.[it] || 0) + Number(m[1]);
+    }
+    if (!Object.keys(add).length) { await line.reply(event.replyToken, "読み取れませんでした。1行目に「小屋登録」、続けて発注文（【サクヤ】の行と「品目 数量」の行）を貼ってください。"); return true; }
+    for (const [f, items] of Object.entries(add)) await shedAdd(env, f, items);
+    await line.reply(event.replyToken, "🛖 小屋に登録しました\n" + Object.entries(add).map(([f, it]) => `【${FAC[f].label}】\n` + Object.entries(it).map(([n, q]) => `${n}　+${q}`).join("\n")).join("\n"));
+    return true;
+  }
   if (text === "小屋クリア") { await shedClear(env); await line.reply(event.replyToken, "物置小屋の記録を0にしました。"); return true; }
   return false;
 }

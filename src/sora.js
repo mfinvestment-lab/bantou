@@ -48,7 +48,7 @@ export async function handleSoraEvent(env, event) {
   if (env.KV) {
     const lm = await import("./linen.js");
     if (await lm.handleLinenEditText(env, event)) return;
-    if (/^(リネン発注案|小屋|小屋在庫|小屋クリア)$/.test(text) && (await lm.handleLinenCommand(env, event, text))) return;
+    if ((/^(リネン発注案|小屋|小屋在庫|小屋クリア)$/.test(text) || text.startsWith("小屋登録")) && (await lm.handleLinenCommand(env, event, text))) return;
   }
   const [head, ...restLines] = text.split("\n");
   const [cmd, ...args] = head.trim().split(/\s+/);
