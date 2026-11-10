@@ -47,6 +47,11 @@ export default {
       return handleLiff(request, env, url);
     }
 
+    if (request.method === "GET" && path === "/linen/share") {
+      const { handleShare } = await import("./linen.js");
+      return handleShare(env, url);
+    }
+
     if (request.method === "POST" && path === "/sora/webhook") {
       return handleWebhook(request, ctx, sora(env), event => handleSoraEvent(env, event));
     }
@@ -174,6 +179,18 @@ export default {
         if (path === "/admin/dash-sales") { const { salesData } = await import("./dash.js"); return json(await salesData(env)); }
         if (path === "/admin/cleaning-status") return json(await todayCleaningStatus(env, url.searchParams.get("d") || undefined));
         if (path === "/admin/delivery-run") return json(await runDeliveryCheck(env));
+        if (path === "/admin/linen-preview") {
+          // 送らずに計算だけ。?today=YYYY-MM-DD（起点）&nominal=YYYY-MM-DD（火 or 金）
+          const { computeOrder } = await import("./linen.js");
+          const o = await computeOrder(env, { today: url.searchParams.get("today") || undefined, nominal: url.searchParams.get("nominal") || undefined });
+          return url.searchParams.get("text") === "1" ? new Response(o.text, { headers: { "content-type": "text/plain; charset=utf-8" } }) : json(o);
+        }
+        if (path === "/admin/linen-run") {
+          // SORAに発注案を今すぐ出す（発注日でなくても force=1 で出せる）
+          const { runLinenOrder } = await import("./linen.js");
+          return json(await runLinenOrder(env, { force: url.searchParams.get("force") === "1", nominal: url.searchParams.get("nominal") || undefined }));
+        }
+        if (path === "/admin/linen-shed") { const { shedGet } = await import("./linen.js"); return json(await shedGet(env)); }
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {
           const { getToken } = await import("./beds24.js");
@@ -254,13 +271,21 @@ export default {
           .catch(err => { console.error("清掃通知エラー:", err.message, err.stack); return notifyOwner(`⚠️ 清掃通知エラー:\n${err.message}`); })
       );
     } else if (event.cron === "0 0 * * *") {
-      ctx.waitUntil(runDeliveryCheck(env));
+      // 納品反映 → リネン発注案（反映後の在庫で計算するため順番に）
+      ctx.waitUntil(
+        runDeliveryCheck(env)
+          .then(() => import("./linen.js"))
+          .then(m => m.runLinenOrder(env))
+          .then(r => console.log("linen order", JSON.stringify(r).slice(0, 300)))
+          .catch(err => notifyOwner(`⚠️ リネン発注案エラー:\n${err.message}`))
+      );
     } else if (event.cron === "0 22 * * *" || event.cron === "0 9 * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env, { sales: true })));
       const { runTimeTreeSync } = await import("./ttsync.js");
       ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
+      ctx.waitUntil(import("./linen.js").then(m => m.remindLinen(env)).catch(e => console.error("linen remind", e.message)));
       ctx.waitUntil(import("./jobs.js").then(m => m.runJobs(env)).then(r => { if (r.ran) console.log("jobs", JSON.stringify(r)); }).catch(e => console.error("jobs error", e.message)));
       ctx.waitUntil(
         pollGuestMessages(env)

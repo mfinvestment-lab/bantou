@@ -36,6 +36,7 @@ export async function handleSoraEvent(env, event) {
   if (event.type === "postback") {
     const pp = new URLSearchParams(event.postback.data || "");
     if (pp.get("bcast")) { await handleBroadcastPostback(env, event, pp); return; }
+    if (pp.get("linen")) { const { handleLinenPostback } = await import("./linen.js"); await handleLinenPostback(env, event, pp); return; }
     await handlePostback(env, event); return;
   }
   if (event.type !== "message" || event.message.type !== "text") return;
@@ -44,6 +45,11 @@ export async function handleSoraEvent(env, event) {
   if (env.KV && (await handleAwaitingText(env, event))) return;
 
   const text = event.message.text.trim();
+  if (env.KV) {
+    const lm = await import("./linen.js");
+    if (await lm.handleLinenEditText(env, event)) return;
+    if (/^(リネン発注案|小屋|小屋在庫|小屋クリア)$/.test(text) && (await lm.handleLinenCommand(env, event, text))) return;
+  }
   const [head, ...restLines] = text.split("\n");
   const [cmd, ...args] = head.trim().split(/\s+/);
   const userId = event.source.userId;

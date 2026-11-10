@@ -2,7 +2,7 @@ name = "bantou"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# 定期実行（UTC）: 23:00 = 日本時間 8:00 清掃通知 / 00:00 = 日本時間 9:00 納品反映
+# 定期実行（UTC）: 23:00 = 日本時間 8:00 清掃通知 / 00:00 = 日本時間 9:00 納品反映 → リネン発注案（火・金）
 [triggers]
 crons = ["0 23 * * *", "0 0 * * *", "*/5 * * * *", "0 22 * * *", "0 9 * * *"]  # 5分ごと = ゲストメッセージ確認 / 22:00・09:00 UTC = 日本時間 7:00・18:00 TimeTree同期
 
@@ -43,6 +43,8 @@ DASH_ALLOW = ""
 SALES_ALLOW = ""
 # 清掃終了のSORA通知: on / early（アーリーイン案内を送ったときだけ）/ off。LINE無料枠200通対策
 SORA_CLEAN_NOTIFY = "off"
+# リネン発注案（火・金 9:00、祝日は前の平日）を SORA に出すか: on / off
+LINEN_ORDER = "on"
 # FAQ自動返信したときのSORAへの1行通知: on / off
 AUTO_FAQ_NOTIFY = "on"
 

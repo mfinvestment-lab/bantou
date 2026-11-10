@@ -1,5 +1,6 @@
 // 在庫管理BOT（HARU）: LINEの発言を解釈して GAS（スプレッドシート）を読み書きする
 import { haru } from "./line.js";
+import { shedTake } from "./linen.js";
 
 const FACILITY_LOCATION = { "サクヤ": "富士宮", "桜ハウス": "富士宮", "nel.shizuoka": "静岡" };
 const FACILITY_MAP = {
@@ -244,7 +245,10 @@ export async function handleInventoryMessage(env, text, replyToken, userId) {
         return;
       case "restock_multi": {
         const msgs = [];
-        for (const b of intent.blocks) msgs.push(formatRestockReply(b.facility, await gas.post(env, { action: "restock", facility: b.facility, items: b.items })));
+        for (const b of intent.blocks) {
+          msgs.push(formatRestockReply(b.facility, await gas.post(env, { action: "restock", facility: b.facility, items: b.items })));
+          await shedTake(env, b.facility, b.items).catch(e => console.error("shedTake", e.message));
+        }
         await line.replyMany(replyToken, msgs);
         return;
       }
@@ -256,6 +260,7 @@ export async function handleInventoryMessage(env, text, replyToken, userId) {
       }
       case "restock":
         await line.reply(replyToken, formatRestockReply(intent.facility, await gas.post(env, { action: "restock", facility: intent.facility, items: intent.items })));
+        await shedTake(env, intent.facility, intent.items).catch(e => console.error("shedTake", e.message)); // 富士宮：小屋から施設へ運んだ分を小屋から引く
         return;
       case "update":
         await line.reply(replyToken, formatUpdateReply(intent.facility, await gas.post(env, { action: "update", facility: intent.facility, items: intent.items })));
