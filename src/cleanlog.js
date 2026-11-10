@@ -21,7 +21,7 @@ const rec = {
 const pb = (label, data, style = "secondary") => ({ type: "button", style, height: "sm", action: { type: "postback", label, data, displayText: label } });
 
 /** 清掃通知（画面案③）：1枚のカードに「本日の清掃」＋物件ごとの行（アウト→次の到着、人数、リネン目安）＋開始/終了ボタン */
-export function cleaningButtonsMessage(date, facilities, { test = false } = {}) {
+export function cleaningButtonsMessage(date, facilities, { test = false, liffId = null, groupId = null } = {}) {
   const tq = test ? "&t=1" : "";
   const DOW = ["日", "月", "火", "水", "木", "金", "土"];
   const [y, m, d] = date.split("-").map(Number);
@@ -33,9 +33,13 @@ export function cleaningButtonsMessage(date, facilities, { test = false } = {}) 
     const lines = [txt(f.name, { weight: "bold", size: "md", margin: i > 0 ? "md" : "none" })];
     if (f.text) lines.push(txt(f.text, { color: "#6b6b6b" }));
     if (f.linen) lines.push(txt(f.linen, { color: "#6b6b6b", size: "xs" }));
+    // ①開始 → ②リネン入力 → ③終了 の順に押す。すべてボタンへの返信なので通数を使わない
+    const q = new URLSearchParams({ f: f.name }); if (groupId) q.set("g", groupId);
+    const linenBtn = liffId ? [{ type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "② リネン", uri: `https://liff.line.me/${liffId}?${q}` } }] : [];
     lines.push({ type: "box", layout: "horizontal", spacing: "sm", margin: "sm", contents: [
-      pb("清掃開始", `act=cstart&f=${encodeURIComponent(f.name)}&d=${date}${tq}`, "primary"),
-      pb("清掃終了", `act=cend&f=${encodeURIComponent(f.name)}&d=${date}${tq}`)
+      pb(liffId ? "① 開始" : "清掃開始", `act=cstart&f=${encodeURIComponent(f.name)}&d=${date}${tq}`, "primary"),
+      ...linenBtn,
+      pb(liffId ? "③ 終了" : "清掃終了", `act=cend&f=${encodeURIComponent(f.name)}&d=${date}${tq}`)
     ] });
     sections.push(...lines);
   });
@@ -74,10 +78,8 @@ export async function handleCleaningPostback(env, event) {
     if (cur.startAt) { await line.reply(event.replyToken, `${facility} は ${hhmm(new Date(cur.startAt))} に${cur.startBy}さんが開始済みです。`); return true; }
     cur.startAt = now.toISOString(); cur.startBy = who; cur.startUser = userId;
     await rec.put(env.KV, date, facility, cur);
-    // 返信（無料）にリネン入力ボタンを付ける。1時間後の通知は LINEN_PROMPT_PUSH=on のときだけ（グループ宛ては人数分の通数になるため）
-    const msgs = [{ type: "text", text: `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）` }];
-    if (env.LIFF_ID && !test) msgs.push(linenInputButton(env, facility, groupId, "清掃が終わりに近づいたら、使ったリネンの枚数を入力してください。"));
-    await line.replyRaw(event.replyToken, msgs);
+    // 1時間後の通知は LINEN_PROMPT_PUSH=on のときだけ（グループ宛ては人数分の通数になるため）
+    await line.reply(event.replyToken, `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）\n終わりに近づいたら「② リネン」で使った枚数を入力してください。`);
     if (env.LINEN_PROMPT_PUSH === "on" && !test && groupId) {
       await env.KV.put(`linenprompt:${params.get("d")}:${facility}`, JSON.stringify({ groupId, due: now.getTime() + 60 * 60000 }), { expirationTtl: 60 * 60 * 12 });
     }

@@ -79,7 +79,7 @@ export async function runCleaningNotification(env) {
       msg += c ? `${f}　${c.count}名${c.nights}泊\n` : `${f}　なし\n`;
     }
     const cards = fujinomiya.filter(f => info[f].cleaning).map(f => cardInfo(f, info[f]));
-    await line.pushMessages(groupId, [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards)]);
+    await line.pushMessages(groupId, [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards, { liffId: env.LIFF_ID, groupId })]);
     fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim() };
   }
 
@@ -87,7 +87,7 @@ export async function runCleaningNotification(env) {
   const nel = info["nel.shizuoka"].cleaning;
   if (nel) {
     const msg = `おはようございます。\n本日もよろしくお願いします。\nnel.shizuoka　${nel.count}名${nel.nights}泊`;
-    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [cardInfo("nel.shizuoka", info["nel.shizuoka"])])]);
+    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [cardInfo("nel.shizuoka", info["nel.shizuoka"])], { liffId: env.LIFF_ID, groupId: env.LINE_GROUP_SHIZUOKA })]);
     shizuokaResult = { sentTo: "静岡チーム", message: msg };
   }
 

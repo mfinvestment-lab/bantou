@@ -201,7 +201,7 @@ async function send(){
   try{
     const ctx=liff.isInClient()?liff.getContext():null;
     if(ctx&&['group','room','utou'].includes(ctx.type)){
-      await liff.sendMessages([{type:'text',text:'📝 リネン入力（'+D.data[f].label+'・'+title.replace(/（.*）/,'')+'）\n'+lines}]);
+      await liff.sendMessages([{type:'text',text:'📝 リネン入力（'+D.data[f].label+'・'+title.replace(/（.*）/,'')+'）\\n'+lines}]);
       posted=true;
     }
   }catch(e){}
