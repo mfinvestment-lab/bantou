@@ -152,7 +152,10 @@ export async function shedTake(env, f, items) {
   for (const { name, qty } of items) if (s[f][name]) s[f][name] = Math.max(0, s[f][name] - (qty || 0));
   await env.KV.put(SHED, JSON.stringify(s));
 }
-export async function shedClear(env) { await env.KV.delete(SHED); }
+export async function shedClear(env, f) {
+  if (!f) { await env.KV.delete(SHED); return; }
+  const s = await shedGet(env); delete s[f]; await env.KV.put(SHED, JSON.stringify(s));
+}
 const PENDING = "linen:pending"; // [{ apply: "YYYY-MM-DD", f, items }]
 
 // ---- 計算 ----
@@ -469,3 +472,14 @@ export async function usageReport(env, days = 30) {
 }
 
 export const bedUseFor = (f, n) => bedUse(FAC[f].bed, n);
+
+/** 今日チェックアウトする予約から、使う枚数の見込み（リネン入力画面の初期値） */
+export async function estimateToday(env, f) {
+  const token = await getToken(env), d = todayJST();
+  const b = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${d}&departureTo=${d}`)).filter(x => x.status !== "cancelled" && x.status !== "black")[0];
+  if (!b) return null;
+  const max = BEDS24_PROPERTIES[f]?.maxGuests || 1, n = Math.min(max, guestsOf(b) || max), k = nightsOf(b);
+  const u = usage(f, n, k);
+  return { n, k, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, u[it] || 0])) };
+}
+export async function usageLogged(env, f, d = todayJST()) { return env.KV.get(`linenuse:${d}:${f}`, "json"); }
