@@ -33,15 +33,15 @@ export function cleaningButtonsMessage(date, facilities, { test = false, liffId 
     const lines = [txt(f.name, { weight: "bold", size: "md", margin: i > 0 ? "md" : "none" })];
     if (f.text) lines.push(txt(f.text, { color: "#6b6b6b" }));
     if (f.linen) lines.push(txt(f.linen, { color: "#6b6b6b", size: "xs" }));
-    // ①開始 → ②リネン入力 → ③終了 の順に押す。すべてボタンへの返信なので通数を使わない
+    // 開始 → リネン → 終了 の順に押す。すべてボタンへの返信なので通数を使わない
     const q = new URLSearchParams({ f: f.name }); if (groupId) q.set("g", groupId);
-    // 3つ横並びだと文字が切れるため、真ん中を広くし、はみ出すときは文字を縮める
+    // 3つ同じ幅で横並び。はみ出すときは文字を縮める
     const fit = b => ({ ...b, adjustMode: "shrink-to-fit" });
-    const linenBtn = liffId ? [fit({ type: "button", style: "secondary", height: "sm", flex: 4, action: { type: "uri", label: "②リネン入力", uri: `https://liff.line.me/${liffId}?${q}` } })] : [];
+    const linenBtn = liffId ? [fit({ type: "button", style: "secondary", height: "sm", flex: 1, action: { type: "uri", label: "リネン", uri: `https://liff.line.me/${liffId}?${q}` } })] : [];
     lines.push({ type: "box", layout: "horizontal", spacing: "xs", margin: "sm", contents: [
-      fit({ ...pb(liffId ? "①開始" : "清掃開始", `act=cstart&f=${encodeURIComponent(f.name)}&d=${date}${tq}`, "primary"), flex: 3 }),
+      fit({ ...pb(liffId ? "開始" : "清掃開始", `act=cstart&f=${encodeURIComponent(f.name)}&d=${date}${tq}`, "primary"), flex: 1 }),
       ...linenBtn,
-      fit({ ...pb(liffId ? "③終了" : "清掃終了", `act=cend&f=${encodeURIComponent(f.name)}&d=${date}${tq}`), flex: 3 })
+      fit({ ...pb(liffId ? "終了" : "清掃終了", `act=cend&f=${encodeURIComponent(f.name)}&d=${date}${tq}`), flex: 1 })
     ] });
     sections.push(...lines);
   });
@@ -81,7 +81,7 @@ export async function handleCleaningPostback(env, event) {
     cur.startAt = now.toISOString(); cur.startBy = who; cur.startUser = userId;
     await rec.put(env.KV, date, facility, cur);
     // 1時間後の通知は LINEN_PROMPT_PUSH=on のときだけ（グループ宛ては人数分の通数になるため）
-    await line.reply(event.replyToken, `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）\n終わりに近づいたら「②リネン入力」で使った枚数を入力してください。`);
+    await line.reply(event.replyToken, `🧹 ${facility} 清掃開始 ${hhmm(now)}（${who}さん）\n終わりに近づいたら「リネン」で使った枚数を入力してください。`);
     if (env.LINEN_PROMPT_PUSH === "on" && !test && groupId) {
       await env.KV.put(`linenprompt:${params.get("d")}:${facility}`, JSON.stringify({ groupId, due: now.getTime() + 60 * 60000 }), { expirationTtl: 60 * 60 * 12 });
     }
