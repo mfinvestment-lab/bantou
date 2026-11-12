@@ -26,19 +26,20 @@ const HELP = `HARU（清掃用）の使い方
 ・清掃終了を押すと、当日チェックインのゲストがいる場合は「準備ができました」の案内が自動で送られます（15時より前の終了のみ）
 ・今日の予定：担当エリアの本日の清掃（人数・泊数）
 ・リネン入力：使った枚数（清掃のあと）／補充（富士宮：小屋から運んだとき）／棚卸（2週間に1回、今ある枚数）
-・足りない物：準備中
+・足りない物：少ない・なくなった消耗品を押すと発注リストに入ります（複数OK）
 ・在庫の発言（「サクヤ バスタオル 残り10」など）は今までどおり使えます
 ・グループでは「開始」「終了」「今日」と送るだけでもボタンが出ます`;
 
 /** 1対1の HARU テキストコマンド。処理したら true */
 export const GROUP_LOC = env => ({ [env.LINE_GROUP_FUJINOMIYA_WEEKDAY]: "富士宮", [env.LINE_GROUP_FUJINOMIYA_HOLIDAY]: "富士宮", [env.LINE_GROUP_SHIZUOKA]: "静岡" });
-const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定", "リネン": "リネン入力" };
+const ALIAS = { "開始": "清掃開始", "終了": "清掃終了", "今日": "今日の予定", "予定": "今日の予定", "リネン": "リネン入力", "足りない": "足りない物", "消耗品": "足りない物" };
 // 清掃グループで返事をするたびにキーボード上に出すボタン
 export const GROUP_QR = [
   { type: "action", action: { type: "message", label: "🧹 開始", text: "清掃開始" } },
   { type: "action", action: { type: "message", label: "🧺 リネン", text: "リネン入力" } },
   { type: "action", action: { type: "message", label: "✅ 終了", text: "清掃終了" } },
   { type: "action", action: { type: "message", label: "📅 今日", text: "今日の予定" } },
+  { type: "action", action: { type: "message", label: "🧴 足りない物", text: "足りない物" } },
   { type: "action", action: { type: "message", label: "☰ メニュー", text: "メニュー" } }
 ];
 const qbtn = (label, text, style = "secondary") => ({ type: "button", style, height: "sm", action: { type: "message", label, text } });
@@ -47,7 +48,8 @@ export const MENU_CARD = { type: "flex", altText: "HARU メニュー", contents:
   body: { type: "box", layout: "vertical", spacing: "sm", contents: [
     { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("清掃開始", "清掃開始", "primary"), qbtn("清掃終了", "清掃終了", "primary")] },
     { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("リネン入力", "リネン入力"), qbtn("今日の予定", "今日の予定")] },
-    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("棚卸", "棚卸"), qbtn("使い方", "ヘルプ")] },
+    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("棚卸", "棚卸"), qbtn("足りない物", "足りない物")] },
+    { type: "box", layout: "horizontal", spacing: "sm", contents: [qbtn("使い方", "ヘルプ")] },
     { type: "text", text: "このカードは「メニュー」と送ればいつでも出せます", size: "xxs", color: "#888888", wrap: true, margin: "sm" }
   ] } } };
 
@@ -64,7 +66,7 @@ export async function handleHaruDirect(env, event) {
   // 「棚卸 物件名」＋品目ごとの「今ある枚数」（グループ・1対1どちらでも）
   if (/^棚卸\s*\S/.test(text) && text.includes("\n")) return await handleStockCountText(env, event, text, me, isOwner);
   if (text === "メニュー" || text === "menu") { await line.replyRaw(event.replyToken, [MENU_CARD]); return true; }
-  if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ", "リネン入力", "棚卸"].includes(text)) return false; // グループでは在庫BOTを優先
+  if (groupId && !["清掃開始", "清掃終了", "今日の予定", "ヘルプ", "リネン入力", "棚卸", "足りない物"].includes(text)) return false; // グループでは在庫BOTを優先
 
   if (text === "登録" || text === "担当登録") {
     await line.replyRaw(event.replyToken, [{ type: "text", text: "担当エリアを選んでください", quickReply: { items: LOCATIONS.map(l => qr(l, `登録 ${l}`)) } }]);
@@ -144,11 +146,23 @@ export async function handleHaruDirect(env, event) {
     await line.replyRaw(event.replyToken, [linenInputButton(env, mine.length === 1 ? mine[0] : null, groupId, "使った枚数・補充・棚卸を入力できます。")]);
     return true;
   }
-  if (text === "足りない物") {
-    await line.reply(event.replyToken, "「足りない物」は準備中です。当面は今までどおりグループで知らせてください。");
+  if (text === "足りない物" || /^足りない物\s+(富士宮|静岡)$/.test(text)) {
+    if (!me && !isOwner) { await needReg(); return true; }
+    const { replySupplyMenu } = await import("./supplies.js");
+    const asked = text.split(/\s+/)[1] || null;
+    const loc = isOwner ? asked : me.loc;              // オーナーの1対1はエリアを選ぶ
+    await replySupplyMenu(env, event.replyToken, loc);
     return true;
   }
   return false;
+}
+
+/** 足りない物ボタン：押した人のエリア（グループならそのグループ、1対1なら登録エリア。オーナーは制限なし＝null） */
+export async function supplyLoc(env, event) {
+  const g = event.source.groupId;
+  if (g) return GROUP_LOC(env)[g] || "×";
+  if (event.source.userId === env.OWNER_USER_ID) return null;
+  return (await staff.get(env.KV, event.source.userId))?.loc || "×";
 }
 
 /** 1対1での清掃ボタンは、登録済み担当エリアの物件だけ許可 */

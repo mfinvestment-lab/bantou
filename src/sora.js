@@ -7,7 +7,7 @@ import { jobs } from "./jobs.js";
 import { handlePostback, handleAwaitingText, pollGuestMessages, createTestCard } from "./approval.js";
 
 const qr = (label, text) => ({ type: "action", action: { type: "message", label: label.slice(0, 20), text } });
-const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 番号…（2-7 も可）／ 学習削除 物件名 番号\n値付け 物件名 変更内容｜理由（値付けの記録。ダッシュボードに表示）";
+const MENU_TEXT = "ボタンを押すか、コマンドを送ってください。\n物件名は省略形でOK（サクヤ／nel／simplestay／ねね など）。別名登録 物件名 別名1 別名2… で追加\n入力が必要なもの：\nFAQ追加 物件名（改行）Q: 質問（改行）A: 答え\nルール設定 物件名（改行）ルール本文\nルール追記 物件名 追加する文\nFAQ自動 物件名 番号（次から自動返信）／FAQ自動解除\nFAQ案 物件名 [日数]（過去のやり取りからFAQ候補）→ FAQ採用 物件名 番号…（改行して文面を直してもOK）\nFAQ修正 物件名 番号（改行）新しい回答\nFAQ一括 物件名（改行）1. Q: …（改行）A: … を複数（FAQ案を手直しして貼る）\n一斉送信 物件名（改行）文面\nFAQ削除 物件名 番号 番号…（2-7 も可）／ 学習削除 物件名 番号\n値付け 物件名 変更内容｜理由（値付けの記録。ダッシュボードに表示）\n発注まとめ（HARUの「足りない物」で入った消耗品。Amazonカートへ）";
 const menuQR = { items: [qr("新着確認", "新着確認"), qr("物件一覧", "物件一覧"), qr("ルール表示", "ルール表示"), qr("FAQ一覧", "FAQ一覧"), qr("学習一覧", "学習一覧"), qr("FAQ追加", "FAQ追加")] };
 const MENU = { type: "text", text: MENU_TEXT, quickReply: menuQR };
 const withMenu = text => ({ type: "text", text, quickReply: menuQR });
@@ -36,6 +36,7 @@ export async function handleSoraEvent(env, event) {
   if (event.type === "postback") {
     const pp = new URLSearchParams(event.postback.data || "");
     if (pp.get("bcast")) { await handleBroadcastPostback(env, event, pp); return; }
+    if (pp.get("sup")) { const { handleSupplySoraPostback } = await import("./supplies.js"); await handleSupplySoraPostback(env, event, pp); return; }
     if (pp.get("linen")) { const { handleLinenPostback } = await import("./linen.js"); await handleLinenPostback(env, event, pp); return; }
     await handlePostback(env, event); return;
   }
@@ -86,6 +87,13 @@ export async function handleSoraEvent(env, event) {
       return;
     }
     if (text === "ping") { await line.reply(event.replyToken, "pong（SORA稼働中）"); return; }
+    if (env.KV && (text === "発注まとめ" || text === "消耗品" || text === "足りない物")) {
+      const { allSummaryCards } = await import("./supplies.js");
+      const cards = await allSummaryCards(env);
+      if (!cards.length) await line.reply(event.replyToken, "消耗品の発注リストは空です。");
+      else await line.replyRaw(event.replyToken, cards);
+      return;
+    }
     if (text === "設定") {
       await line.replyRaw(event.replyToken, [{ type: "text", text: "何をしますか？", quickReply: { items: [qr("FAQ追加", "FAQ追加"), qr("ルール表示", "ルール表示"), qr("学習一覧", "学習一覧"), qr("FAQ一覧", "FAQ一覧")] } }]);
       return;

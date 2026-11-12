@@ -33,6 +33,10 @@ export default {
           } }
         if (event.type === "postback") {
           if (event.postback?.data === "act=sample") { await haru(env).reply(event.replyToken, "見本のボタンです（何も記録されません）"); return; }
+          if ((event.postback?.data || "").startsWith("sup=")) {
+            const { handleSupplyHaruPostback } = await import("./supplies.js"); const { supplyLoc } = await import("./harucmd.js");
+            await handleSupplyHaruPostback(env, event, new URLSearchParams(event.postback.data), await supplyLoc(env, event)); return;
+          }
           await handleCleaningPostback(env, event); return;
         }
         if (event.type !== "message" || event.message.type !== "text") return;
@@ -85,6 +89,11 @@ export default {
     if (path.startsWith("/liff/")) {
       const { handleLiff } = await import("./liff.js");
       return handleLiff(request, env, url);
+    }
+
+    if (request.method === "GET" && path === "/supplies/cart") {
+      const { handleCartRedirect } = await import("./supplies.js");
+      return handleCartRedirect(env, url);
     }
 
     if (request.method === "GET" && path === "/linen/share") {
@@ -235,6 +244,9 @@ export default {
           return json(await runLinenOrder(env, { force: url.searchParams.get("force") === "1", nominal: url.searchParams.get("nominal") || undefined }));
         }
         if (path === "/admin/linen-usage") { const { usageReport } = await import("./linen.js"); return json(await usageReport(env, Number(url.searchParams.get("days") || 30))); }
+        if (path === "/admin/supplies") { const m = await import("./supplies.js"); const out = {}; for (const l of m.LOCS) out[l] = await m.pending.get(env.KV, l); return json(out); }
+        if (path === "/admin/supplies-cart") { const m = await import("./supplies.js"); return json(await m.cartUrl(env, m.ITEMS.filter(i => i.proc === "amazon").map(i => i.id))); }
+        if (path === "/admin/supplies-digest") { const m = await import("./supplies.js"); return json(await m.runSupplyDigest(env)); }
         if (path === "/admin/linen-shed") { const { shedGet } = await import("./linen.js"); return json(await shedGet(env)); }
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {
@@ -328,6 +340,8 @@ export default {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env, { sales: true })));
       const { runTimeTreeSync } = await import("./ttsync.js");
       ctx.waitUntil(runTimeTreeSync(env).then(r => console.log("timetree sync", JSON.stringify(r).slice(0, 500))));
+      // 18:00（UTC 9:00）だけ：消耗品の発注リストに新しい品目があれば SORA にまとめを1通
+      if (event.cron === "0 9 * * *") ctx.waitUntil(import("./supplies.js").then(m => m.runSupplyDigest(env)).then(r => console.log("supply digest", JSON.stringify(r))).catch(e => notifyOwner(`⚠️ 消耗品まとめエラー: ${e.message}`)));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(import("./dash.js").then(m => m.warmDashboard(env)));
       ctx.waitUntil(import("./cleanlog.js").then(m => m.runLinenPrompts(env)).catch(e => console.error("linen prompt", e.message)));
