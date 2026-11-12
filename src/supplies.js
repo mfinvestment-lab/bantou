@@ -7,8 +7,8 @@ import { haru, sora } from "./line.js";
 
 // proc: amazon = Amazon で発注 / own = 個別手配（通知のみ、リンクなし）。only: そのエリアだけに出す
 export const ITEMS = [
-  { id: "tp", name: "トイレットペーパー", cat: "アメニティ", proc: "amazon", url: "https://amzn.asia/d/02yPyvYA" },
-  { id: "tissue", name: "ティッシュ", cat: "アメニティ", proc: "amazon", url: "https://amzn.asia/d/0gC5t6af" },
+  { id: "tp", name: "トイレットペーパー", cat: "アメニティ", proc: "amazon", url: "https://www.amazon.co.jp/dp/B07WMF5FPS" },
+  { id: "tissue", name: "ティッシュ", cat: "アメニティ", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0FTM9YY3Y" },
   { id: "toothbrush", name: "歯ブラシ", cat: "アメニティ", proc: "amazon", url: "https://www.amazon.co.jp/dp/B01563ZN7U" },
   { id: "bottle", name: "シャンプー等のボトル", cat: "アメニティ", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0FCBFLWLC" },
   { id: "shampoo", name: "シャンプー", cat: "アメニティ", proc: "own" },
@@ -22,13 +22,13 @@ export const ITEMS = [
   { id: "sponge", name: "食器用スポンジ", cat: "キッチン", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0CQ22VDL3" },
   { id: "laundry", name: "洗濯洗剤", cat: "キッチン", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0GM6K3VC1" },
   { id: "kpaper", name: "キッチンペーパー", cat: "キッチン", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0FPPXFCD4" },
-  { id: "drainnet", name: "排水口ネット", cat: "キッチン", proc: "amazon", url: "https://amzn.asia/d/0apNoTBu" },
+  { id: "drainnet", name: "排水口ネット", cat: "キッチン", proc: "amazon", url: "https://www.amazon.co.jp/dp/B09H1F6BBJ" },
   { id: "bathclean", name: "バスタブ洗剤", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B086C23MKC" },
-  { id: "bathsponge", name: "風呂掃除スポンジ", cat: "清掃用", proc: "amazon", url: "https://amzn.asia/d/0jkyEpTh" },
-  { id: "toiletsheet", name: "トイレクリーナー", cat: "清掃用", proc: "amazon", url: "https://amzn.asia/d/0i9SBfue" },
-  { id: "sunpole", name: "サンポール", cat: "清掃用", proc: "amazon", url: "https://amzn.asia/d/07KxB9en" },
-  { id: "floorsheet", name: "床用ウェットシート", cat: "清掃用", proc: "amazon", url: "https://amzn.asia/d/043rD1D5" },
-  { id: "roller", name: "コロコロ替え", cat: "清掃用", proc: "amazon", url: "https://amzn.asia/d/00SKRpuY" },
+  { id: "bathsponge", name: "風呂掃除スポンジ", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0DQD91WM9" },
+  { id: "toiletsheet", name: "トイレクリーナー", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0F1YHMLBY" },
+  { id: "sunpole", name: "サンポール", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0BTPBFBJ8" },
+  { id: "floorsheet", name: "床用ウェットシート", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0CQ3VZFNB" },
+  { id: "roller", name: "コロコロ替え", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B09L7SNH6K" },
   { id: "cloth", name: "使い捨て布巾", cat: "清掃用", proc: "amazon", url: "https://www.amazon.co.jp/dp/B0GCHVJ9N2" },
   { id: "bluelet", name: "ブルーレット（サクヤ）", cat: "清掃用", proc: "amazon", url: null, only: ["富士宮"] }
 ];
@@ -95,27 +95,10 @@ export async function handleSupplyHaruPostback(env, event, pp, allowedLoc) {
   await line.reply(event.replyToken, `✅ 「${it.name}」を${loc}の発注リストに入れました。ほかにもあれば続けて押してください。`);
 }
 
-// --- ASIN（短縮リンクは Worker から辿って解決し、KV に30日保存） ---
+// --- ASIN：URL は必ず amazon.co.jp/dp/<ASIN> の形で持つ（短縮リンクは辿らない。誤った商品をカートに入れないため） ---
 async function asinOf(env, it) {
-  if (!it.url) return null;
-  const direct = it.url.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
-  if (direct) return direct[1];
-  const ck = `sup:asin:${it.id}`;
-  const cached = await env.KV.get(ck);
-  if (cached) return cached === "-" ? null : cached;
-  let url = it.url, asin = null;
-  try {
-    for (let hop = 0; hop < 4 && !asin; hop++) {
-      const res = await fetch(url, { redirect: "manual", headers: { "User-Agent": "Mozilla/5.0" } });
-      const loc = res.headers.get("location");
-      const m = (loc || "").match(/\/(?:dp|gp\/product|d)\/([A-Z0-9]{10})/);
-      if (m && /^[A-Z0-9]{10}$/.test(m[1]) && /^B0|^\d/.test(m[1])) asin = m[1];
-      if (!loc) { const html = res.status === 200 ? await res.text() : ""; const h = html.match(/\/dp\/([A-Z0-9]{10})/); if (h) asin = h[1]; break; }
-      url = new URL(loc, url).toString();
-    }
-  } catch (e) { console.error("asin resolve", it.id, e.message); }
-  await env.KV.put(ck, asin || "-", { expirationTtl: asin ? 60 * 60 * 24 * 30 : 60 * 60 * 6 });
-  return asin;
+  const m = (it.url || "").match(/amazon\.co\.jp\/dp\/([A-Z0-9]{10})(?:[/?]|$)/);
+  return m ? m[1] : null;
 }
 
 /** Amazon のカート追加URL（Amazon 品で ASIN が分かるものだけ）。Quantity は1個（1箱）ずつ。数量はカートで直す */
