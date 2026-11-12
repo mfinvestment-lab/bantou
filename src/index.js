@@ -54,13 +54,23 @@ export default {
         if (env.KV && text.startsWith("📝 リネン入力")) {
           const m = text.match(/^📝 リネン入力（(.+?)・(.+?)）/);
           const fac = m && { "サクヤ": "サクヤ", "桜ハウス": "桜ハウス", "nel.": "nel.shizuoka" }[m[1]];
-          if (fac && m[2] === "使った枚数") {
+          if (!fac) return;
+          const msgs = [];
+          // 従来どおり、入力後の在庫一覧を返す（使った枚数・補充・棚卸すべて）
+          try {
+            const { stockSummaryText } = await import("./inventory.js");
+            const label = m[2] === "補充" ? "在庫補充しました" : m[2] === "棚卸" ? "棚卸を反映しました" : "在庫更新しました";
+            const t = await stockSummaryText(env, fac, label);
+            if (t) msgs.push({ type: "text", text: t });
+          } catch (e) { console.error("stock summary", e.message); }
+          if (m[2] === "使った枚数") {
             const { cleanEndButton, todayCleaningStatus } = await import("./cleanlog.js");
             const { formatDateYMD } = await import("./beds24.js");
             const d = formatDateYMD(new Date());
             const st = (await todayCleaningStatus(env, d))[fac];
-            if (!st?.endAt) await haru(env).replyRaw(event.replyToken, [cleanEndButton(fac, d, `${fac} のリネン入力ありがとうございます。清掃が終わったら押してください。`)]);
+            if (!st?.endAt) msgs.push(cleanEndButton(fac, d, `${fac} のリネン入力ありがとうございます。清掃が終わったら押してください。`));
           }
+          if (msgs.length) await haru(env).replyRaw(event.replyToken, msgs);
           return;
         }
         if (env.KV && (await handleHaruDirect(env, event))) return;

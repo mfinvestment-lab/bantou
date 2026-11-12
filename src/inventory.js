@@ -137,6 +137,12 @@ function formatUpdateReply(facility, r) {
   if (!r.success) return `❌ エラー: ${r.error}`;
   return `📦 ${facility} 在庫更新しました✅\n─────────────\n` + r.updated.map(it => `${it.name}　${it.current}枚${warnMark(it)}`).join("\n") + "\n";
 }
+/** リネン入力画面から送ったあとにグループへ返す在庫一覧（従来の「在庫更新しました」と同じ形） */
+export async function stockSummaryText(env, facility, label) {
+  const s = await fetch(`${env.GAS_URL}?action=get&facility=${encodeURIComponent(facility)}`).then(r => r.json());
+  if (!s.success) return null;
+  return `📦 ${facility} ${label}✅\n─────────────\n` + s.items.map(it => `${it.name}　${it.current}枚${warnMark(it)}`).join("\n");
+}
 function formatCheckReply(facility, s) {
   if (!s.success) return `❌ エラー: ${s.error}`;
   return `📋 ${facility} 現在の在庫\n─────────────\n` + s.items.map(it => `${it.name}　${it.current}枚${warnMark(it)}`).join("\n") + "\n";
