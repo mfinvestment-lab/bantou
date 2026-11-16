@@ -15,6 +15,8 @@ async function facOf(env, name) {
   const c = await cfac.get(env.KV, name);
   return c ? { checkin: c.checkin || "16:00", groupIds: c.groups || [], propId: c.propId, label: c.label || name } : null;
 }
+// 物件ごとのアーリーインの下限（曜日指定）。nel はリネン納品のある月・木は14:30より前に案内しない
+const EARLY_MIN = { "nel.shizuoka": { days: [1, 4], from: "14:30", why: "リネン納品日" } };
 const EARLY_CUTOFF = "15:00";   // これより前に清掃が終わったときだけアーリーイン案内
 const EARLY_FROM = "09:00";     // 早朝・深夜の誤操作で案内しない
 const EARLY_OFFSET_MIN = 30;    // 終了から何分後に入れるか
@@ -149,7 +151,13 @@ async function notifySameDayGuest(env, facility, date, now, cur, { test = false,
     if (nowHm < EARLY_FROM) return { sent: false, reason: `${EARLY_FROM}より前の終了のため案内なし` };
     const t = new Date(now.getTime() + EARLY_OFFSET_MIN * 60000);
     t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5, 0, 0);
-    const time = hhmm(t);
+    let time = hhmm(t);
+    const mn = EARLY_MIN[facility];
+    if (mn) {
+      const [yy, mm, dd] = date.split("-").map(Number);
+      const dow = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
+      if (mn.days.includes(dow) && time < mn.from) time = mn.from; // 納品日は下限の時刻まで繰り下げ
+    }
     const results = [];
     for (const b of arrivals) {
       const done = (b.infoItems || []).some(i => /GUESTDONE/i.test(i.code || ""));
