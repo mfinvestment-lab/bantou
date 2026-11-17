@@ -22,14 +22,14 @@ export const FAC = {
     mat: () => 1
   },
   "桜ハウス": {
-    label: "桜ハウス", area: "富士宮", small: true, // リネン庫が小さい → 常備数を超えないよう切り捨て
+    label: "桜ハウス", area: "富士宮",
     par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 60, "フェイスタオル": 60, "バスマット": 8 },
     bed: { single: 4, double: 2, pillowPerSingle: 1, pillowPerDouble: 1, coverPerPillow: 2, maxPillowCover: 12 },
     mat: () => 1
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
-    par: { "シングルシーツ": 25, "シングルカバー": 25, "枕カバー": 40, "バスタオル": 50, "フェイスタオル": 50, "バスマット": 10 },
+    par: { "シングルシーツ": 25, "シングルカバー": 25, "枕カバー": 50, "バスタオル": 50, "フェイスタオル": 50, "バスマット": 10 }, // 枕カバーは場所を取らないので多め
     // 実績 3名→シーツ4・枕カバー8（2026-11-10）
     bed: { single: 7, double: 0, pillowPerSingle: 1, pillowPerDouble: 0, coverPerPillow: 2, maxPillowCover: 14 },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
