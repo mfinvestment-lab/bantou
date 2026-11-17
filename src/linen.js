@@ -219,8 +219,10 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
         const projected = inSheet + inShed + inPend - before[it];
         let qty = 0;
         if (!a.skip) {
-          // 次の納品日の清掃まで使い切っても常備数が残る数まで、パック単位で切り上げて補充する
-          const target = cfg.par[it] + need[it];
+          // 納品時に常備数以上。次の納品までに足りない見込みなら「使用予想＋清掃1回分の予備」まで積む
+          // （その間は一時的に常備数を割り込んでよい：リネン庫に入りきらないため）
+          const spare = Math.max(0, ...cl.filter(c => c.date > delivery && c.date <= coverEnd).map(c => c.use[it]));
+          const target = Math.max(cfg.par[it], need[it] + spare);
           const short = target - projected;
           if (short > 0) qty = Math.ceil(short / UNIT[it]) * UNIT[it];
         }
