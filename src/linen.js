@@ -131,7 +131,7 @@ function cleanings(f, bookings, from, to) {
   return bookings.filter(b => b.departure >= from && b.departure <= to).map(b => {
     const st = setupFor(f, bookings.filter(x => x.id !== b.id), b.departure);
     return { date: b.departure, n: st.n, k: st.k, basis: st.full ? `次まで間あり→定員${st.n}名×1泊` : `次 ${md(st.arrival)} ${st.n}名${st.k}泊`, use: usage(f, st.n, st.k) };
-  });
+   }).sort((a, c) => a.date.localeCompare(c.date)); // 日付順に表示
 }
 const sumUse = (cl, from, to) => {
   const s = Object.fromEntries(ITEMS.map(i => [i, 0]));
