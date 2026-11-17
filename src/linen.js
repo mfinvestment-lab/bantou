@@ -29,7 +29,7 @@ export const FAC = {
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
-    par: { "シングルシーツ": 30, "シングルカバー": 30, "枕カバー": 60, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 10 },
+    par: { "シングルシーツ": 25, "シングルカバー": 25, "枕カバー": 40, "バスタオル": 50, "フェイスタオル": 50, "バスマット": 10 },
     // 実績 3名→シーツ4・枕カバー8（2026-11-10）
     bed: { single: 7, double: 0, pillowPerSingle: 1, pillowPerDouble: 0, coverPerPillow: 2, maxPillowCover: 14 },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
