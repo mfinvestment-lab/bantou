@@ -1,12 +1,15 @@
 // 棚卸の依頼：前回の棚卸から14日たったら、朝の清掃通知に「棚卸のお願い」を付けて送る（同じpushに入れるので通数は増えない）
 // 富士宮は平日チームと休日チームが交互に担当する：前回が平日チームなら、次は休日チームの日にだけ依頼を出す（12日目から）。
+// サクヤと桜ハウスは担当チームを互い違いにする（毎回入れ替わるので、どちらのチームも両方の物件を同じ回数ずつ担当する）。
+// 依頼はその物件の清掃がある日だけ出す。
 //   ただし21日たっても済んでいなければ、どちらのチームの日でも依頼する。
 import { formatDateYMD } from "./beds24.js";
 
 export const STOCKTAKE_DAYS = 14, STOCKTAKE_FORCE_DAYS = 21;
 // 富士宮は担当チームの日を待つので、12日目から依頼を出せるようにして平均14日前後にする
 const FUJI_FROM = 12;
-const SEED = { date: "2026-11-10", team: "weekday" }; // 記録がない物件は 11/10 に平日チームが棚卸した扱い
+// 記録がない物件の起点。サクヤと桜ハウスは前回の担当チームを逆にしておく → 次の担当がいつも別チームになり、同じ日に依頼が重ならない
+const SEED = { "サクヤ": { date: "2026-11-10", team: "weekday" }, "桜ハウス": { date: "2026-11-10", team: "holiday" }, "nel.shizuoka": { date: "2026-11-10", team: "weekday" } };
 const AREA = { "サクヤ": "富士宮", "桜ハウス": "富士宮", "nel.shizuoka": "静岡" };
 const KEY = f => `tana:last:${f}`;
 const days = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000);
@@ -33,7 +36,7 @@ export async function lastStocktake(env, f) {
   const l = await env.KV.list({ prefix: "tana:20" });
   const dates = l.keys.map(k => k.name.split(":")).filter(p => p[2] === f).map(p => p[1]).sort();
   if (dates.length) { const date = dates.at(-1); return { date, team: await teamOf(env, date) }; }
-  return { ...SEED, seed: true };
+  return { ...SEED[f], seed: true };
 }
 
 /** 棚卸を記録（liff.js の applyStockCount から呼ぶ） */

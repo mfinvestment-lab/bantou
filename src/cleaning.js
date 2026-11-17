@@ -84,7 +84,8 @@ export async function runCleaningNotification(env) {
     }
     const cards = fujinomiya.filter(f => info[f].cleaning).map(f => cardInfo(f, info[f]));
     const fMsgs = [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards, { liffId: env.LIFF_ID, groupId })];
-    const fDue = await stocktakeDue(env, fujinomiya, todayStr, holiday ? "holiday" : "weekday");
+    // 棚卸の依頼は、今日清掃がある物件だけ（現地にいるときに数えてもらう）
+    const fDue = await stocktakeDue(env, fujinomiya.filter(f => info[f].cleaning), todayStr, holiday ? "holiday" : "weekday");
     if (fDue.length) fMsgs.push(stocktakeRequestMessage(env, fDue, groupId));
     await line.pushMessages(groupId, fMsgs);
     fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim(), stocktake: fDue.map(x => x.f) };
