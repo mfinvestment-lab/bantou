@@ -219,8 +219,8 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
         const projected = inSheet + inShed + inPend - before[it];
         let qty = 0;
         if (!a.skip) {
-          // 常備数を下回らない＆次の納品まで足りる数まで、パック単位で切り上げて補充する
-          const target = Math.max(cfg.par[it], need[it]);
+          // 次の納品日の清掃まで使い切っても常備数が残る数まで、パック単位で切り上げて補充する
+          const target = cfg.par[it] + need[it];
           const short = target - projected;
           if (short > 0) qty = Math.ceil(short / UNIT[it]) * UNIT[it];
         }
