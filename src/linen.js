@@ -37,19 +37,14 @@ export const FAC = {
 };
 /**
  * ベッドまわりの使用数。人数＋1人分のベッドを用意する前提。
- * シングルから使うか、ダブルから使うかはゲスト次第なので、両方の場合を計算して品目ごとに多い方を取る（欠品を防ぐ側に倒す）
+ * ダブルがある物件は、ダブルを先に1人1台で使い、残りをシングルで使う（オーナーの見立て 2026-11-17）。
+ * 実際との差は、スタッフの「使った枚数」の報告から出す補正係数で吸収する（usageFactors）。
  */
 function bedUse(b, n) {
   const people = n + 1;
-  const fill = singleFirst => {
-    let s, d;
-    if (singleFirst) { s = Math.min(b.single, people); d = Math.min(b.double, Math.ceil(Math.max(0, people - s) / 2)); }
-    else { d = Math.min(b.double, Math.ceil(people / 2)); s = Math.min(b.single, Math.max(0, people - d * 2)); }
-    const pc = Math.min(b.maxPillowCover, (s * b.pillowPerSingle + d * b.pillowPerDouble) * b.coverPerPillow);
-    return { s, d, pc };
-  };
-  const a = fill(true), c = fill(false);
-  const s = Math.max(a.s, c.s), d = Math.max(a.d, c.d), pc = Math.max(a.pc, c.pc);
+  const d = Math.min(b.double, people);
+  const s = Math.min(b.single, people - d);
+  const pc = Math.min(b.maxPillowCover, (s * b.pillowPerSingle + d * b.pillowPerDouble) * b.coverPerPillow);
   const u = { "シングルシーツ": s, "シングルカバー": s, "枕カバー": pc };
   if (b.double) { u["ダブルシーツ"] = d; u["ダブルカバー"] = d; }
   return u;
@@ -127,10 +122,16 @@ export function setupFor(f, bookings, date) {
   return max * 1 >= nn * nk ? { n: max, k: 1, arrival: next.arrival, full: true, nextN: nn, nextK: nk } : { n: nn, k: nk, arrival: next.arrival, full: false };
 }
 /** 清掃（＝出発日）ごとに使う数。次のゲスト用にセットする数で見る */
-function cleanings(f, bookings, from, to) {
+/** 補正係数をかけた使用数（係数がない品目はそのまま。切り上げ） */
+function usageAdj(f, n, k, factors = {}) {
+  const u = usage(f, n, k);
+  for (const it of Object.keys(u)) { const x = factors[it]; if (x?.applied && u[it] > 0) u[it] = Math.ceil(u[it] * x.factor); }
+  return u;
+}
+function cleanings(f, bookings, from, to, factors) {
   return bookings.filter(b => b.departure >= from && b.departure <= to).map(b => {
     const st = setupFor(f, bookings.filter(x => x.id !== b.id), b.departure);
-    return { date: b.departure, n: st.n, k: st.k, basis: st.full ? `次まで間あり→定員${st.n}名×1泊` : `次 ${md(st.arrival)} ${st.n}名${st.k}泊`, use: usage(f, st.n, st.k) };
+    return { date: b.departure, n: st.n, k: st.k, basis: st.full ? `次まで間あり→定員${st.n}名×1泊` : `次 ${md(st.arrival)} ${st.n}名${st.k}泊`, use: usageAdj(f, st.n, st.k, factors) };
    }).sort((a, c) => a.date.localeCompare(c.date)); // 日付順に表示
 }
 const sumUse = (cl, from, to) => {
@@ -189,6 +190,9 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
   const shed = await shedGet(env);
   const pending = ((await env.KV.get(PENDING, "json")) || []).filter(p => p.apply > today);
   const out = { today, nominal, areas: [] };
+  let factors = {};
+  try { factors = await usageFactors(env); } catch (e) { console.error("usageFactors", e.message); }
+  out.factors = factors;
 
   for (const [area, facs] of Object.entries(AREAS)) {
     const delivery = add(nominal, offsets[area]);
@@ -209,7 +213,7 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
     for (const f of facs) {
       const cfg = FAC[f];
       const coverEnd = a.skip ? a.nextReal : a.next;
-      const cl = cleanings(f, bk[f], today, coverEnd);
+      const cl = cleanings(f, bk[f], today, coverEnd, factors[f]);
       const before = sumUse(cl, today, delivery);          // 納品日の清掃までは手元の在庫で回す（納品当日分は使えない）
       const need = sumUse(cl, add(delivery, 1), coverEnd);  // 次の納品日までに使う分
       const rows = [];
@@ -284,6 +288,10 @@ function card(o, id) {
       }
       const notes = f.rows.filter(r => r.shed || r.pending).map(r => `${SHORT[r.item]}${r.shed ? ` 未補充${r.shed}` : ""}${r.pending ? ` 入荷待${r.pending}` : ""}`);
       if (notes.length) body.push(T(`* 現在庫に含む：${notes.join("・")}`, { color: "#888888", size: "xxs" }));
+      const fx = o.factors?.[f.f] || {};
+      const fxOn = Object.entries(fx).filter(([, x]) => x.applied && x.factor !== 1).map(([it, x]) => `${SHORT[it]}×${x.factor}`);
+      const fxN = Math.max(0, ...Object.values(fx).map(x => x.samples || 0));
+      body.push(T(fxOn.length ? `補正：${fxOn.join("・")}（実績${fxN}回）` : `補正なし（実績${fxN}回／${FACTOR_MIN}回から反映）`, { color: "#888888", size: "xxs" }));
       const sh = f.rows.filter(r => r.short).map(r => `${SHORT[r.item]}は次回納品までに${r.need}枚必要`);
       if (sh.length) body.push(T(`⚠ ${sh.join("・")}`, { color: "#c0392b", size: "xxs" }));
     }
@@ -514,3 +522,31 @@ export async function nextGuest(env, f) {
   return { ...st, arrivalLabel: st.arrival ? mdw(st.arrival) : null };
 }
 export async function usageLogged(env, f, d = todayJST()) { return env.KV.get(`linenuse:${d}:${f}`, "json"); }
+
+// ---- 使用数の補正（実績 ÷ 予想 の中央値。毎回の発注で自動反映） ----
+export const FACTOR_MIN = 10, FACTOR_LO = 0.6, FACTOR_HI = 1.1; // 10回分たまった品目から反映。極端な補正はしない
+const median = a => { const x = [...a].sort((p, q) => p - q), m = x.length >> 1; return x.length % 2 ? x[m] : (x[m - 1] + x[m]) / 2; };
+/** 物件・品目ごとの補正係数。12時間キャッシュ */
+export async function usageFactors(env, { fresh = false, days = 90 } = {}) {
+  if (!fresh) { const c = await env.KV.get("linen:factors", "json"); if (c) return c; }
+  const token = await getToken(env), today = todayJST(), from = add(today, -days);
+  const out = {};
+  for (const f of Object.keys(FAC)) {
+    const bk = (await getBookings(token, `propertyId=${BEDS24_PROPERTIES[f].propId}&departureFrom=${from}&arrivalTo=${add(today, 60)}`)).filter(b => b.status !== "cancelled" && b.status !== "black");
+    const ratios = {};
+    for (let d = from; d < today; d = add(d, 1)) {
+      const rep = await env.KV.get(`linenuse:${d}:${f}`, "json");
+      if (!rep) continue;
+      const st = setupFor(f, bk, d), est = usage(f, st.n, st.k);
+      for (const it of Object.keys(FAC[f].par)) if (est[it] > 0 && rep[it] != null) (ratios[it] ||= []).push(rep[it] / est[it]);
+    }
+    out[f] = {};
+    for (const it of Object.keys(FAC[f].par)) {
+      const r = ratios[it] || [];
+      const m = r.length ? median(r) : null;
+      out[f][it] = { samples: r.length, median: m == null ? null : Math.round(m * 100) / 100, factor: m == null ? 1 : Math.round(Math.min(FACTOR_HI, Math.max(FACTOR_LO, m)) * 100) / 100, applied: r.length >= FACTOR_MIN };
+    }
+  }
+  await env.KV.put("linen:factors", JSON.stringify(out), { expirationTtl: 60 * 60 * 12 });
+  return out;
+}
