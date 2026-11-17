@@ -58,6 +58,7 @@ const AREAS = { "富士宮": ["サクヤ", "桜ハウス"], "静岡": ["nel.shiz
 const DELIVERY_DOW = { "富士宮": [3, 6], "静岡": [1, 4] };       // 水・土 ／ 月・木
 const ORDER_DOW = { 2: { "富士宮": 1, "静岡": 2 }, 5: { "富士宮": 1, "静岡": 3 } }; // 火→水・木、金→土・月（発注予定日からの日数）
 const REMIND_AT = "09:20";
+const DIP_MAX = 10, DIP_REPEAT = 5; // 次の納品時点で常備数を割り込んでよい枚数（通常／2回連続）
 const BASE_URL = env => env.PUBLIC_URL || "https://bantou.goichiros516.workers.dev";
 
 // ---- 日付（"YYYY-MM-DD" 文字列で扱う） ----
@@ -219,10 +220,10 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
         const projected = inSheet + inShed + inPend - before[it];
         let qty = 0;
         if (!a.skip) {
-          // 納品時に常備数以上。次の納品までに足りない見込みなら「使用予想＋清掃1回分の予備」まで積む
-          // （その間は一時的に常備数を割り込んでよい：リネン庫に入りきらないため）
-          const spare = Math.max(0, ...cl.filter(c => c.date > delivery && c.date <= coverEnd).map(c => c.use[it]));
-          const target = Math.max(cfg.par[it], need[it] + spare);
+          // 納品時に常備数以上。次の納品時点で常備数を割り込むのは最大10枚まで。
+          // すでに割り込んだ状態で納品を迎える（2回連続になる）ときは最大5枚まで
+          const dip = projected < cfg.par[it] ? DIP_REPEAT : DIP_MAX;
+          const target = Math.max(cfg.par[it], need[it] + Math.max(0, cfg.par[it] - dip));
           const short = target - projected;
           if (short > 0) qty = Math.ceil(short / UNIT[it]) * UNIT[it];
         }
