@@ -242,10 +242,13 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
 export function orderText(o) {
   const parts = [];
   for (const a of o.areas) {
-    if (a.skip) { parts.push(`${a.area}は連泊中\n納品＆回収なし`); continue; }
     let s = `📋 ${a.area} ${md(a.delivery)}\n`;
     for (const f of a.facilities) {
-      s += `\n【${f.label}】\n` + f.rows.map(r => `${r.item}　${r.qty}`).join("\n") + "\n";
+      s += `\n【${f.label}】\n`;
+      // 静岡（nel.）：納品日にゲスト滞在中ならスキップ、発注0なら回収のみ
+      if (a.area === "静岡" && a.skip) s += "ゲスト滞在中の為、納品＆回収なし\n";
+      else if (a.area === "静岡" && !f.rows.some(r => r.qty > 0)) s += "発注なし、回収のみお願いします\n";
+      else s += f.rows.map(r => `${r.item}　${r.qty}`).join("\n") + "\n";
     }
     parts.push(s.trim());
   }
