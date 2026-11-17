@@ -29,7 +29,7 @@ export const FAC = {
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
-    par: { "シングルシーツ": 15, "シングルカバー": 15, "枕カバー": 50, "バスタオル": 20, "フェイスタオル": 20, "バスマット": 6 }, // 枕カバーは場所を取らないので多め
+    par: { "シングルシーツ": 15, "シングルカバー": 15, "枕カバー": 30, "バスタオル": 20, "フェイスタオル": 20, "バスマット": 6 }, // 枕カバーは約2回分（50だと発注が膨らむため 2026-11-17）
     // 実績 3名→シーツ4・枕カバー8（2026-11-10）
     bed: { single: 7, double: 0, pillowPerSingle: 1, pillowPerDouble: 0, coverPerPillow: 2, maxPillowCover: 14 },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
@@ -265,16 +265,17 @@ function card(o, id) {
       const SHORT = { "シングルシーツ": "Sシーツ", "シングルカバー": "Sカバー", "ダブルシーツ": "Wシーツ", "ダブルカバー": "Wカバー", "枕カバー": "枕カバー", "バスタオル": "バスタオル", "フェイスタオル": "フェイス", "バスマット": "マット" };
       const cell = (t, o = {}) => ({ type: "text", text: String(t), size: "xs", align: "end", flex: 2, ...o });
       const tr = (cells, o = {}) => ({ type: "box", layout: "horizontal", spacing: "xs", margin: "xs", ...o, contents: cells });
-      body.push(tr([cell("品目", { align: "start", flex: 3, color: "#888888" }), ...["現在庫", "使用", "発注", "納品後", "常備"].map(h => cell(h, { color: "#888888" }))], { margin: "sm" }));
+      // 使用＝今日から次の納品日までの清掃で使う見込み、残り＝次の納品の時点で残る数（常備数以上になるよう発注）
+      body.push(tr([cell("品目", { align: "start", flex: 3, color: "#888888" }), ...["現在庫", "使用", "発注", "残り", "常備"].map(h => cell(h, { color: "#888888" }))], { margin: "sm" }));
       for (const r of f.rows) {
         const now = r.sheet + r.shed + r.pending;
         const col = r.short ? "#c0392b" : "#333333";
         body.push(tr([
           cell(`${r.short ? "⚠" : ""}${SHORT[r.item] || r.item}`, { align: "start", flex: 3, color: col }),
           cell(now + (r.shed || r.pending ? "*" : ""), { color: col }),
-          cell(r.before ? `−${r.before}` : "0", { color: "#888888" }),
+          cell(r.before + r.need ? `−${r.before + r.need}` : "0", { color: "#888888" }),
           cell(r.qty ? `+${r.qty}` : "0", { color: r.qty ? "#d1477a" : "#bbbbbb", weight: r.qty ? "bold" : "regular" }),
-          cell(r.after, { color: col }),
+          cell(r.after - r.need, { color: col }),
           cell(r.par, { color: "#888888" })
         ]));
       }
@@ -288,7 +289,7 @@ function card(o, id) {
   return {
     type: "flex", altText: `リネン発注案 ${md(o.today)}`,
     contents: { type: "bubble", size: "giga",
-      header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [T(`🧺 リネン発注案 ${mdw(o.today)}`, { color: "#ffffff", weight: "bold", size: "md" }), T("9:30までにゆーかさんへ　使用＝納品日までの清掃で使う見込み", { color: "#cccccc", size: "xxs" })] },
+      header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [T(`🧺 リネン発注案 ${mdw(o.today)}`, { color: "#ffffff", weight: "bold", size: "md" }), T("9:30までにゆーかさんへ　使用＝次の納品日までの清掃で使う見込み／残り＝次の納品時の残り", { color: "#cccccc", size: "xxs", wrap: true })] },
       body: { type: "box", layout: "vertical", spacing: "xs", contents: body },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
         o.group
