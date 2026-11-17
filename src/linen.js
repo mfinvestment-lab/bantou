@@ -17,19 +17,19 @@ const UNIT = { "シングルシーツ": 10, "シングルカバー": 10, "ダブ
 export const FAC = {
   "サクヤ": {
     label: "サクヤ", area: "富士宮",
-    par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
+    par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 60, "フェイスタオル": 60, "バスマット": 8 },
     bed: { single: 6, double: 2, pillowPerSingle: 1, pillowPerDouble: 2, coverPerPillow: 1, maxPillowCover: 10 },
     mat: () => 1
   },
   "桜ハウス": {
     label: "桜ハウス", area: "富士宮", small: true, // リネン庫が小さい → 常備数を超えないよう切り捨て
-    par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 8 },
+    par: { "シングルシーツ": 25, "シングルカバー": 25, "ダブルシーツ": 8, "ダブルカバー": 8, "枕カバー": 40, "バスタオル": 60, "フェイスタオル": 60, "バスマット": 8 },
     bed: { single: 4, double: 2, pillowPerSingle: 1, pillowPerDouble: 1, coverPerPillow: 2, maxPillowCover: 12 },
     mat: () => 1
   },
   "nel.shizuoka": {
     label: "nel.", area: "静岡",
-    par: { "シングルシーツ": 30, "シングルカバー": 30, "枕カバー": 40, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 10 },
+    par: { "シングルシーツ": 30, "シングルカバー": 30, "枕カバー": 60, "バスタオル": 40, "フェイスタオル": 40, "バスマット": 10 },
     // 実績 3名→シーツ4・枕カバー8（2026-11-10）
     bed: { single: 7, double: 0, pillowPerSingle: 1, pillowPerDouble: 0, coverPerPillow: 2, maxPillowCover: 14 },
     mat: nights => (nights >= 4 ? 3 : nights >= 2 ? 2 : 1) // 連泊は2〜3枚
@@ -219,13 +219,10 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
         const projected = inSheet + inShed + inPend - before[it];
         let qty = 0;
         if (!a.skip) {
-          const target = a.extendedFrom ? Math.max(cfg.par[it], need[it]) : cfg.par[it];
+          // 常備数を下回らない＆次の納品まで足りる数まで、パック単位で切り上げて補充する
+          const target = Math.max(cfg.par[it], need[it]);
           const short = target - projected;
-          if (short > 0) {
-            const u = UNIT[it];
-            const units = cfg.small ? Math.floor(short / u) : a.extendedFrom && need[it] > cfg.par[it] ? Math.ceil(short / u) : Math.round(short / u);
-            qty = Math.max(0, units) * u;
-          }
+          if (short > 0) qty = Math.ceil(short / UNIT[it]) * UNIT[it];
         }
         const after = projected + qty;
         rows.push({ item: it, sheet: inSheet, shed: inShed, pending: inPend, before: before[it], projected, qty, after, par: cfg.par[it], need: need[it], short: after < need[it] });
