@@ -242,7 +242,7 @@ export async function computeOrder(env, { today = todayJST(), nominal } = {}) {
 export function orderText(o) {
   const parts = [];
   for (const a of o.areas) {
-    let s = `📋 ${a.area} ${md(a.delivery)}\n`;
+    let s = `📋 ${a.area} ${mdw(a.delivery)}\n`; // 例：📋 富士宮 11/18（水）
     for (const f of a.facilities) {
       s += `\n【${f.label}】\n`;
       // 静岡（nel.）：納品日にゲスト滞在中ならスキップ、発注0なら回収のみ
