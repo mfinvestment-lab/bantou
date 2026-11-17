@@ -261,18 +261,34 @@ function card(o, id) {
     for (const f of a.facilities) {
       const cl = f.cleanings.map(c => `${md(c.date)} ${c.n}名${c.k}泊`).join("・") || "清掃なし";
       body.push(T(`【${f.label}】清掃 ${cl}`, { color: "#555555", margin: "sm" }));
+      // 全品目を表で：現在庫（未補充・入荷待ちを含む）／納品日までに使う見込み／発注／納品後／常備
+      const SHORT = { "シングルシーツ": "Sシーツ", "シングルカバー": "Sカバー", "ダブルシーツ": "Wシーツ", "ダブルカバー": "Wカバー", "枕カバー": "枕カバー", "バスタオル": "バスタオル", "フェイスタオル": "フェイス", "バスマット": "マット" };
+      const cell = (t, o = {}) => ({ type: "text", text: String(t), size: "xs", align: "end", flex: 2, ...o });
+      const tr = (cells, o = {}) => ({ type: "box", layout: "horizontal", spacing: "xs", margin: "xs", ...o, contents: cells });
+      body.push(tr([cell("品目", { align: "start", flex: 3, color: "#888888" }), ...["現在庫", "使用", "発注", "納品後", "常備"].map(h => cell(h, { color: "#888888" }))], { margin: "sm" }));
       for (const r of f.rows) {
-        if (!r.qty && !r.short) continue;
-        const stock = `${r.sheet}${r.shed ? `+未補充${r.shed}` : ""}${r.pending ? `+入荷待${r.pending}` : ""}`;
-        body.push(T(`${r.short ? "⚠️" : "・"}${r.item} 在庫${stock}−使用${r.before}=${r.projected} → +${r.qty}＝${r.after}（常備${r.par}${r.short ? `／次回まで${r.need}必要` : ""}）`, { color: r.short ? "#c0392b" : "#333333" }));
+        const now = r.sheet + r.shed + r.pending;
+        const col = r.short ? "#c0392b" : "#333333";
+        body.push(tr([
+          cell(`${r.short ? "⚠" : ""}${SHORT[r.item] || r.item}`, { align: "start", flex: 3, color: col }),
+          cell(now + (r.shed || r.pending ? "*" : ""), { color: col }),
+          cell(r.before ? `−${r.before}` : "0", { color: "#888888" }),
+          cell(r.qty ? `+${r.qty}` : "0", { color: r.qty ? "#d1477a" : "#bbbbbb", weight: r.qty ? "bold" : "regular" }),
+          cell(r.after, { color: col }),
+          cell(r.par, { color: "#888888" })
+        ]));
       }
+      const notes = f.rows.filter(r => r.shed || r.pending).map(r => `${SHORT[r.item]}${r.shed ? ` 未補充${r.shed}` : ""}${r.pending ? ` 入荷待${r.pending}` : ""}`);
+      if (notes.length) body.push(T(`* 現在庫に含む：${notes.join("・")}`, { color: "#888888", size: "xxs" }));
+      const sh = f.rows.filter(r => r.short).map(r => `${SHORT[r.item]}は次回納品までに${r.need}枚必要`);
+      if (sh.length) body.push(T(`⚠ ${sh.join("・")}`, { color: "#c0392b", size: "xxs" }));
     }
   }
   const btn = (label, action, style = "secondary") => ({ type: "button", style, height: "sm", action: { ...action, label } });
   return {
     type: "flex", altText: `リネン発注案 ${md(o.today)}`,
     contents: { type: "bubble", size: "giga",
-      header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [T(`🧺 リネン発注案 ${mdw(o.today)}`, { color: "#ffffff", weight: "bold", size: "md" }), T("9:30までにゆーかさんへ", { color: "#cccccc" })] },
+      header: { type: "box", layout: "vertical", backgroundColor: "#1a1a1a", paddingAll: "12px", contents: [T(`🧺 リネン発注案 ${mdw(o.today)}`, { color: "#ffffff", weight: "bold", size: "md" }), T("9:30までにゆーかさんへ　使用＝納品日までの清掃で使う見込み", { color: "#cccccc", size: "xxs" })] },
       body: { type: "box", layout: "vertical", spacing: "xs", contents: body },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
         o.group
