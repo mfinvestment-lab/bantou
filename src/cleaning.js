@@ -2,6 +2,9 @@
 import { BEDS24_PROPERTIES, getToken, fetchFacilityBookings, nowJST, formatDateYMD, addDays, nightsBetween } from "./beds24.js";
 import { haru } from "./line.js";
 import { cleaningButtonsMessage } from "./cleanlog.js";
+import { dueStocktakes, stocktakeRequestMessage } from "./stocktake.js";
+// 棚卸依頼の判定でエラーになっても、清掃通知そのものは送る
+const stocktakeDue = async (env, fs, d, team) => { try { return env.KV && env.LIFF_ID ? await dueStocktakes(env, fs, d, team) : []; } catch (e) { console.error("stocktake", e.message); return []; } };
 
 async function isWeekendOrHoliday(dateStr) {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -80,16 +83,22 @@ export async function runCleaningNotification(env) {
       msg += c ? `${f}　${c.count}名${c.nights}泊\n` : `${f}　なし\n`;
     }
     const cards = fujinomiya.filter(f => info[f].cleaning).map(f => cardInfo(f, info[f]));
-    await line.pushMessages(groupId, [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards, { liffId: env.LIFF_ID, groupId })]);
-    fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim() };
+    const fMsgs = [{ type: "text", text: msg.trim() }, cleaningButtonsMessage(todayStr, cards, { liffId: env.LIFF_ID, groupId })];
+    const fDue = await stocktakeDue(env, fujinomiya, todayStr, holiday ? "holiday" : "weekday");
+    if (fDue.length) fMsgs.push(stocktakeRequestMessage(env, fDue, groupId));
+    await line.pushMessages(groupId, fMsgs);
+    fujinomiyaResult = { sentTo: holiday ? "富士宮休日チーム" : "富士宮平日チーム", message: msg.trim(), stocktake: fDue.map(x => x.f) };
   }
 
   let shizuokaResult = null;
   const nel = info["nel.shizuoka"].cleaning;
   if (nel) {
     const msg = `おはようございます。\n本日もよろしくお願いします。\nnel.shizuoka　${nel.count}名${nel.nights}泊`;
-    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [cardInfo("nel.shizuoka", info["nel.shizuoka"])], { liffId: env.LIFF_ID, groupId: env.LINE_GROUP_SHIZUOKA })]);
-    shizuokaResult = { sentTo: "静岡チーム", message: msg };
+    const sMsgs = [{ type: "text", text: msg }, cleaningButtonsMessage(todayStr, [cardInfo("nel.shizuoka", info["nel.shizuoka"])], { liffId: env.LIFF_ID, groupId: env.LINE_GROUP_SHIZUOKA })];
+    const sDue = await stocktakeDue(env, ["nel.shizuoka"], todayStr, null);
+    if (sDue.length) sMsgs.push(stocktakeRequestMessage(env, sDue, env.LINE_GROUP_SHIZUOKA));
+    await line.pushMessages(env.LINE_GROUP_SHIZUOKA, sMsgs);
+    shizuokaResult = { sentTo: "静岡チーム", message: msg, stocktake: sDue.map(x => x.f) };
   }
 
   return { success: true, today: todayStr, fujinomiya: fujinomiyaResult, shizuoka: shizuokaResult };

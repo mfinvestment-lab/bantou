@@ -171,6 +171,7 @@ async function main(){
     D=await r.json();
     if(D.error){$('#app').innerHTML='<p class="err">'+esc(D.error)+'</p>';return;}
     // 清掃カードの［② リネン］から開いたときは、その物件に固定（取り違え防止）
+    if(P.get('m')==='count') mode='count'; // 棚卸の依頼から開いたとき
     if(P.get('f')&&D.facilities.includes(P.get('f'))){F=P.get('f');locked=true;}
     else if(D.facilities.length===1){F=D.facilities[0];locked=true;}
     F?draw():pick();
@@ -259,6 +260,7 @@ export async function applyStockCount(env, facility, counts, { name = "スタッ
   if (used.length) await gasPost(env, { action: "update", facility, items: used });
   const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
   await env.KV.put(`tana:${date}:${facility}`, JSON.stringify({ by: name, userId, at: new Date().toISOString(), diffs }), { expirationTtl: 60 * 60 * 24 * 365 });
+  try { const { recordStocktake } = await import("./stocktake.js"); await recordStocktake(env, facility, date); } catch (e) { console.error("recordStocktake", e.message); }
   const changed = diffs.filter(d => d.diff !== 0);
   const text = `📦 棚卸 ${LABEL[facility] || facility}（${name}さん）\n` + (changed.length ? changed.map(d => `${d.name}：${d.before}→${d.after}（${d.diff > 0 ? "+" : ""}${d.diff}）`).join("\n") : "在庫シートと一致（差なし）");
   try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, text); } catch {}

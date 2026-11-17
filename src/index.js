@@ -247,6 +247,7 @@ export default {
         if (path === "/admin/supplies") { const m = await import("./supplies.js"); const out = {}; for (const l of m.LOCS) out[l] = await m.pending.get(env.KV, l); return json(out); }
         if (path === "/admin/supplies-cart") { const m = await import("./supplies.js"); return json(await m.cartUrl(env, m.ITEMS.filter(i => i.proc === "amazon").map(i => i.id))); }
         if (path === "/admin/supplies-digest") { const m = await import("./supplies.js"); return json(await m.runSupplyDigest(env)); }
+        if (path === "/admin/stocktake-status") { const { stocktakeStatus } = await import("./stocktake.js"); return json(await stocktakeStatus(env)); }
         if (path === "/admin/linen-shed") { const { shedGet } = await import("./linen.js"); return json(await shedGet(env)); }
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {
