@@ -49,6 +49,17 @@ export async function handleSoraEvent(env, event) {
   if (env.KV) {
     const lm = await import("./linen.js");
     if (await lm.handleLinenEditText(env, event)) return;
+    if (/^棚卸依頼/.test(text)) {
+      // 「棚卸依頼」＝今日清掃があって時期が来ている物件／「棚卸依頼 サクヤ 桜ハウス」＝指定した物件
+      const ALIAS = { "サクヤ": "サクヤ", "桜ハウス": "桜ハウス", "さくらハウス": "桜ハウス", "nel": "nel.shizuoka", "ネル": "nel.shizuoka", "nel.": "nel.shizuoka" };
+      const names = [...new Set(text.replace(/^棚卸依頼/, "").split(/[\s、・,]+/).map(x => ALIAS[x.trim()]).filter(Boolean))];
+      try {
+        const { sendStocktakeNow } = await import("./stocktake.js");
+        const sent = await sendStocktakeNow(env, names);
+        await sora(env).reply(event.replyToken, sent.length ? `📋 棚卸の依頼を送りました\n${sent.join("\n")}` : "今日、棚卸の依頼を出す物件はありません（物件を指定するときは「棚卸依頼 サクヤ」）");
+      } catch (e) { await sora(env).reply(event.replyToken, `⚠️ 棚卸依頼に失敗：${e.message.slice(0, 150)}`); }
+      return;
+    }
     if ((/^(リネン発注案|小屋|小屋在庫|未補充|小屋クリア)$/.test(text) || text.startsWith("小屋登録")) && (await lm.handleLinenCommand(env, event, text))) return;
   }
   const [head, ...restLines] = text.split("\n");

@@ -9,7 +9,9 @@ export const STOCKTAKE_DAYS = 14, STOCKTAKE_FORCE_DAYS = 21;
 // 富士宮は担当チームの日を待つので、12日目から依頼を出せるようにして平均14日前後にする
 const FUJI_FROM = 12;
 // 記録がない物件の起点。サクヤと桜ハウスは前回の担当チームを逆にしておく → 次の担当がいつも別チームになり、同じ日に依頼が重ならない
-const SEED = { "サクヤ": { date: "2026-11-10", team: "weekday" }, "桜ハウス": { date: "2026-11-10", team: "holiday" }, "nel.shizuoka": { date: "2026-11-10", team: "weekday" } };
+// 11/20：しばらく棚卸していないので今週から依頼を始める（起点を11/6に前倒し）。
+//   桜ハウス→平日チーム（11/20・11/24の清掃）、サクヤ→休日チーム（11/22の清掃）、nel.→11/21以降の清掃
+const SEED = { "サクヤ": { date: "2026-11-06", team: "weekday" }, "桜ハウス": { date: "2026-11-06", team: "holiday" }, "nel.shizuoka": { date: "2026-11-06", team: "weekday" } };
 const AREA = { "サクヤ": "富士宮", "桜ハウス": "富士宮", "nel.shizuoka": "静岡" };
 const KEY = f => `tana:last:${f}`;
 const days = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000);
@@ -84,4 +86,29 @@ export async function stocktakeStatus(env, today = formatDateYMD(new Date())) {
   const out = {};
   for (const f of Object.keys(AREA)) { const l = await lastStocktake(env, f); out[f] = { ...l, teamLabel: TEAM_LABEL[l.team], daysAgo: days(l.date, today) }; }
   return out;
+}
+
+/**
+ * SORAの「棚卸依頼」：今すぐ清掃グループに棚卸の依頼カードを送る（朝の通知を待たない）。
+ * 物件を指定しなければ、今日清掃があって棚卸の時期が来ている物件。富士宮は今日のチーム（平日／休日）のグループへ。
+ */
+export async function sendStocktakeNow(env, names = []) {
+  const { collectFacilityInfo } = await import("./cleaning.js");
+  const { haru } = await import("./line.js");
+  const today = formatDateYMD(new Date());
+  const team = (await isOffDay(env, today)) ? "holiday" : "weekday";
+  const { info } = await collectFacilityInfo(env);
+  const pick = names.length ? names : Object.keys(AREA).filter(f => info[f]?.cleaning);
+  const due = names.length
+    ? await Promise.all(pick.map(async f => { const l = await lastStocktake(env, f); return { f, last: l.date, days: days(l.date, today) }; }))
+    : await dueStocktakes(env, pick, today, team);
+  const groups = { "富士宮": team === "holiday" ? env.LINE_GROUP_FUJINOMIYA_HOLIDAY : env.LINE_GROUP_FUJINOMIYA_WEEKDAY, "静岡": env.LINE_GROUP_SHIZUOKA };
+  const sent = [];
+  for (const area of ["富士宮", "静岡"]) {
+    const d = due.filter(x => AREA[x.f] === area);
+    if (!d.length) continue;
+    await haru(env).pushMessages(groups[area], [stocktakeRequestMessage(env, d, groups[area])]);
+    sent.push(`${area === "富士宮" ? `富士宮${TEAM_LABEL[team]}` : "静岡"}：${d.map(x => x.f).join("・")}`);
+  }
+  return sent;
 }
