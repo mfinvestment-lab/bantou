@@ -39,10 +39,10 @@ export async function buildMorningBrief(env, date = formatDateYMD(new Date())) {
   if (regMissing) warn.push(`名簿未 ${regMissing}件`);
   if (d.kpi.reply) warn.push(`返信待ち ${d.kpi.reply}件`);
   L.push("", warn.length ? "⚠ " + warn.join("／") : "✅ 名簿未・返信待ちなし");
-  try { // 先の予約の名簿未提出（14日以内）。一覧は「名簿」
+  try { // 先の予約の名簿未提出（7日以内）。一覧は「名簿」
     const { meiboCheck } = await import("./meibo.js");
     const ahead = (await meiboCheck(env)).filter(r => !r.today && r.reg === "missing").length;
-    if (ahead) L.push(`📋 14日以内の名簿未 ${ahead}件（「名簿」で一覧）`);
+    if (ahead) L.push(`📋 7日以内の名簿未 ${ahead}件（「名簿」で一覧）`);
   } catch (e) { console.error("brief meibo", e.message); }
   return L.join("\n");
 }

@@ -1,8 +1,8 @@
-// 名簿チェック（今後14日の到着予約）。旧「宿泊者名簿提出LINE通知GAS」の置き換え
+// 名簿チェック（今後7日の到着予約）。旧「宿泊者名簿提出LINE通知GAS」の置き換え
 // 判定は Beds24 の名簿（GUESTDONE）。Beds24名簿を使わない予約（GUESTLINKなし）は「対象外」
 import { getToken, getBookings, formatDateYMD } from "./beds24.js";
 
-const DAYS = 14;
+const DAYS = 7;
 const md = s => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}`;
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 const mdw = s => `${md(s)}(${DOW[new Date(s + "T00:00:00Z").getUTCDay()]})`;
