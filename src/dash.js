@@ -28,7 +28,7 @@ const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 const label = ymd => { const [y, m, d] = ymd.split("-").map(Number); return `${m}/${d}（${DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`; };
 
 // 全物件（Beds24）。先頭は清掃ボタンのある3物件、残りは名前順。New Property は除外
-async function allProperties(env, token) {
+export async function allProperties(env, token) {
   let map = await propsCache.get(env.KV);
   if (!map) { map = await fetchPropertyMap(token); await propsCache.set(env.KV, map); }
   const main = Object.keys(BEDS24_PROPERTIES);
@@ -38,12 +38,12 @@ async function allProperties(env, token) {
   return { names, order };
 }
 const DISPLAY = { "The Bunkhouse Nagoya": "Bunkhouse", "SimpleStayShibuyaShinjyuku": "SimpleStay", "SimpleStay Shibuya Shinjyuku": "SimpleStay", "アパートメントねね": "ねね" };
-const disp = n => DISPLAY[n] || n;
+export const disp = n => DISPLAY[n] || n;
 const groupBy = (list, names) => { const g = {}; for (const b of list) (g[names[String(b.propertyId)] || String(b.propertyId)] ||= []).push(b); return g; };
 const monthRange = (d) => { const y = d.getFullYear(), m = d.getMonth(); const s = new Date(Date.UTC(y, m, 1)), e = new Date(Date.UTC(y, m + 1, 0)); return { from: s.toISOString().slice(0, 10), to: e.toISOString().slice(0, 10), label: `${y}年${m + 1}月`, days: e.getUTCDate() }; };
 
 // 名簿：Beds24名簿を使う予約（GUESTLINKあり）だけ判定。GUESTDONE があれば済
-function registry(b) {
+export function registry(b) {
   const items = b.infoItems || [];
   const uses = items.some(i => /GUESTLINK|GUESTREGISTRATIONID/i.test(i.code || ""));
   if (!uses) return "n/a";
