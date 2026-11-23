@@ -13,7 +13,7 @@ function withQR(body) {
   return { ...body, messages: msgs };
 }
 
-export function createLineClient(accessToken, channelSecret) {
+export function createLineClient(accessToken, channelSecret, { onPush } = {}) {
   if (!accessToken) throw new Error("LINE access token が未設定です");
 
   async function call(path, body) {
@@ -27,6 +27,7 @@ export function createLineClient(accessToken, channelSecret) {
       const text = await res.text();
       throw new Error(`LINE API ${path} 失敗 (status=${res.status}): ${text}`);
     }
+    if (path === "/message/push" && onPush) { try { await onPush(body); } catch {} }
   }
 
   return {
@@ -57,12 +58,31 @@ export function createLineClient(accessToken, channelSecret) {
   };
 }
 
+// push の記録（月ごと・用途ごとの通数を数える）。用途はメッセージ先頭から推定
+const pushLabel = m => {
+  const t = String(m?.altText || m?.text || m?.contents?.header?.contents?.[0]?.text || m?.type || "").replace(/\s+/g, " ").trim();
+  return t.replace(/[0-9０-９\/:：（）()年月日・ ]+.*$/, "").slice(0, 14) || t.slice(0, 14) || "その他";
+};
+const pushLogger = (env, ch) => async body => {
+  if (!env.KV) return;
+  const ym = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 7);
+  const key = `pushlog:${ym}:${ch}`;
+  const log = (await env.KV.get(key, "json")) || {};
+  const to = String(body.to || "");
+  const kind = to.startsWith("C") || to.startsWith("R") ? "グループ" : "1対1";
+  const label = `${pushLabel(body.messages?.[0])}（${kind}）`;
+  const n = (body.messages || []).length || 1;
+  const e = log[label] ||= { pushes: 0, msgs: 0 };
+  e.pushes++; e.msgs += n;
+  await env.KV.put(key, JSON.stringify(log), { expirationTtl: 60 * 60 * 24 * 120 });
+};
+
 export function haru(env) {
-  return createLineClient(env.HARU_CHANNEL_ACCESS_TOKEN, env.HARU_CHANNEL_SECRET);
+  return createLineClient(env.HARU_CHANNEL_ACCESS_TOKEN, env.HARU_CHANNEL_SECRET, { onPush: pushLogger(env, "HARU") });
 }
 
 export function sora(env) {
-  return createLineClient(env.SORA_CHANNEL_ACCESS_TOKEN, env.SORA_CHANNEL_SECRET);
+  return createLineClient(env.SORA_CHANNEL_ACCESS_TOKEN, env.SORA_CHANNEL_SECRET, { onPush: pushLogger(env, "SORA") });
 }
 
 // Webhook共通: 署名検証 → 200即返し → 裏で処理

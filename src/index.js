@@ -249,6 +249,7 @@ export default {
         if (path === "/admin/supplies-digest") { const m = await import("./supplies.js"); return json(await m.runSupplyDigest(env)); }
         if (path === "/admin/stocktake-status") { const { stocktakeStatus } = await import("./stocktake.js"); return json(await stocktakeStatus(env)); }
         if (path === "/admin/linen-factors") { const { usageFactors } = await import("./linen.js"); return json(await usageFactors(env, { fresh: true })); }
+        if (path === "/admin/line-usage") { const { lineUsage } = await import("./quota.js"); return json(await lineUsage(env)); }
         if (path === "/admin/linen-shed") { const { shedGet } = await import("./linen.js"); return json(await shedGet(env)); }
         if (path === "/admin/messages-poll") return json(await pollGuestMessages(env, { force: url.searchParams.get("force") === "1" }));
         if (path === "/admin/beds24-check") {
