@@ -61,7 +61,8 @@ export function createLineClient(accessToken, channelSecret, { onPush } = {}) {
 // push の記録（月ごと・用途ごとの通数を数える）。用途はメッセージ先頭から推定
 const pushLabel = m => {
   const t = String(m?.altText || m?.text || m?.contents?.header?.contents?.[0]?.text || m?.type || "").replace(/\s+/g, " ").trim();
-  return t.replace(/[0-9０-９\/:：（）()年月日・ ]+.*$/, "").slice(0, 14) || t.slice(0, 14) || "その他";
+  const u = t.replace(/^[0-9０-９\/()（）月火水木金土日 ]+/, "");
+  return u.replace(/[0-9０-９\/:：（）()]+.*$/, "").trim().slice(0, 14) || u.slice(0, 14) || "その他";
 };
 const pushLogger = (env, ch) => async body => {
   if (!env.KV) return;
