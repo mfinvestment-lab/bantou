@@ -36,14 +36,16 @@ export const FAC = {
   }
 };
 /**
- * ベッドまわりの使用数。人数＋1人分のベッドを用意する前提。
- * ダブルがある物件は、ダブルを先に1人1台で使い、残りをシングルで使う（オーナーの見立て 2026-11-17）。
+ * ベッドまわりの使用数。
+ * ダブルがある物件（サクヤ・桜ハウス）：ダブルを先に2人1台で使い、残りをシングル。予備のベッドは数えない
+ *   （11/24 実績：5名→S1・W2、10名→S6・W2、4名→W2 など。11/17の「ダブル1人1台」の見立てとは逆だった）
+ * シングルだけの物件（nel.）：人数＋1人分（実績とほぼ一致）
  * 実際との差は、スタッフの「使った枚数」の報告から出す補正係数で吸収する（usageFactors）。
  */
 function bedUse(b, n) {
-  const people = n + 1;
-  const d = Math.min(b.double, people);
-  const s = Math.min(b.single, people - d);
+  let s, d;
+  if (b.double) { d = Math.min(b.double, Math.ceil(n / 2)); s = Math.min(b.single, Math.max(0, n - d * 2)); }
+  else { d = 0; s = Math.min(b.single, n + 1); }
   const pc = Math.min(b.maxPillowCover, (s * b.pillowPerSingle + d * b.pillowPerDouble) * b.coverPerPillow);
   const u = { "シングルシーツ": s, "シングルカバー": s, "枕カバー": pc };
   if (b.double) { u["ダブルシーツ"] = d; u["ダブルカバー"] = d; }
