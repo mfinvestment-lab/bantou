@@ -104,11 +104,12 @@ export async function handleLiff(request, env, url) {
     const lbl = LABEL[facility] || facility;
 
     if (mode === "use") {
-      const items = nums.filter(([, v]) => v > 0).map(([n, v]) => ({ name: n, used: v }));
-      if (!items.length) return json({ error: "枚数が入っていません" }, 400);
-      const r = await gasPost(env, { action: "update", facility, items });
+      const all = nums.map(([n, v]) => ({ name: n, used: v }));      // 0 も実績として記録する
+      const items = all.filter(x => x.used > 0);
+      if (!all.length) return json({ error: "枚数が入っていません" }, 400);
+      const r = items.length ? await gasPost(env, { action: "update", facility, items }) : { success: true, updated: [] };
       if (!r.success) return json({ error: `在庫シートの更新に失敗：${r.error || ""}` }, 500);
-      await L.logUsage(env, facility, items);
+      await L.logUsage(env, facility, all);
       return json({ ok: true, message: `【${lbl}】使った枚数を記録しました\n` + r.updated.map(it => `${it.name}　残り${it.current}枚`).join("\n") });
     }
     if (mode === "restock") {
@@ -215,6 +216,8 @@ function draw(){
 async function send(){
   const btn=$('#send'), d=D.data[F];
   const counts={};document.querySelectorAll('input[data-n]').forEach(i=>counts[i.dataset.n]=i.value);
+  // 使った枚数は空欄を0として送る（品目の抜けをなくし、実績を正確にするため）
+  if(mode==='use'&&Object.values(counts).some(v=>v!=='')) for(const k in counts) if(counts[k]==='') counts[k]='0';
   const lines=Object.entries(counts).filter(([,v])=>v!=='').map(([k,v])=>k+' '+v).join('\\n');
   const title={use:'使った枚数',restock:'補充',count:'棚卸'}[mode];
   if(!lines){alert('枚数が入っていません');return;}

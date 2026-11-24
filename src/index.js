@@ -77,6 +77,22 @@ export default {
           if (msgs.length) await haru(env).replyRaw(event.replyToken, msgs);
           return;
         }
+        // 入力方式に切り替え済み（2026-11-24）：清掃グループでのテキストによる在庫変更（使用数・補充・棚卸）は受け付けず、リネンボタンへ案内する
+        if (env.LINEN_TEXT_INPUT !== "on" && event.source.groupId) {
+          const { simpleAnalyze } = await import("./inventory.js");
+          const t0 = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+          const isWrite = /^棚卸\s*\S/.test(t0) && t0.includes("\n") || ["update", "update_multi", "restock", "restock_multi"].includes(simpleAnalyze(t0).type);
+          if (isWrite) {
+            const { linenInputButton } = await import("./cleanlog.js");
+            const { GROUP_LOC } = await import("./harucmd.js");
+            const single = GROUP_LOC(env)[event.source.groupId] === "静岡" ? "nel.shizuoka" : null;
+            await haru(env).replyRaw(event.replyToken, [
+              { type: "text", text: "リネンの枚数は「リネン」ボタンから入力してください。\nこのメッセージの数は在庫に反映していません。お手数ですが下のボタンから入れ直してください。" },
+              linenInputButton(env, single, event.source.groupId, "使った枚数・補充・棚卸を入力できます。")
+            ]);
+            return;
+          }
+        }
         if (env.KV && (await handleHaruDirect(env, event))) return;
         await handleInventoryMessage(env, text, event.replyToken, event.source.userId);
       });

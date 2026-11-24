@@ -506,7 +506,7 @@ export async function usageReport(env, days = 30) {
       const st = setupFor(f, bk, d);
       const n = st.n, k = st.k;
       const est = usage(f, n, k);
-      rows.push({ date: d, facility: f, guests: n, nights: k, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, { reported: rep[it] ?? null, model: est ? est[it] : null }])) });
+      rows.push({ date: d, facility: f, guests: n, nights: k, fullFallback: !!st.full, items: Object.fromEntries(Object.keys(FAC[f].par).map(it => [it, { reported: rep[it] ?? null, model: est ? est[it] : null }])) });
     }
   }
   return { from, to: today, rows };
@@ -538,6 +538,7 @@ export async function usageFactors(env, { fresh = false, days = 90 } = {}) {
       const rep = await env.KV.get(`linenuse:${d}:${f}`, "json");
       if (!rep) continue;
       const st = setupFor(f, bk, d), est = usage(f, st.n, st.k);
+      if (st.full) continue; // 次の予約まで間があり定員で見積もった清掃は、実際のセット数と比べられないので補正に使わない
       for (const it of Object.keys(FAC[f].par)) if (est[it] > 0 && rep[it] != null) (ratios[it] ||= []).push(rep[it] / est[it]);
     }
     out[f] = {};

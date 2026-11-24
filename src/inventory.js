@@ -99,7 +99,7 @@ function splitByFacilityBlocks(text, valueKey) {
   return blocks;
 }
 
-function simpleAnalyze(text) {
+export function simpleAnalyze(text) {
   const t = text.trim();
   const isShort = t.length <= 10;
   if (isShort && (t.includes("発注") || t.includes("オーダー"))) return { type: "order_start" };
