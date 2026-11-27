@@ -125,8 +125,10 @@ export async function runTimeTreeSync(env) {
     if (r.errors.length) {
       await line.push(target, `⚠️ TimeTree同期で${r.errors.length}件失敗しました（${setting}）。手動で確認してください。\n` + r.errors.slice(0, 5).map(e => `${e.op} ${e.key} ${e.status}`).join("\n"));
     } else if (changed > 0 && setting !== "dry") {
-      const lines = [...(r.applied.create.map(s => "＋ " + s)), ...(r.applied.delete.map(s => "－ " + s)), ...(r.applied.update.map(s => "〜 " + s))].slice(0, 15).join("\n");
-      await line.push(target, `📅 TimeTree同期：追加${c.create}・変更${c.update}・削除${c.delete}${c.skippedDelete ? `（削除候補${c.skippedDelete}件は追加のみモードのため未反映）` : ""}\n${lines}`);
+      // 変更の通知は push せず、朝の要約に載せる（通数の節約 2026-11-27）
+      const lines = [...(r.applied.create.map(s => "＋ " + s)), ...(r.applied.delete.map(s => "－ " + s)), ...(r.applied.update.map(s => "〜 " + s))];
+      const prev = (await env.KV.get("tt:changes", "json")) || [];
+      await env.KV.put("tt:changes", JSON.stringify([...prev, ...lines].slice(-30)), { expirationTtl: 60 * 60 * 48 });
     }
     return r;
   } catch (e) {

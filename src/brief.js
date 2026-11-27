@@ -50,7 +50,12 @@ export async function buildMorningBrief(env, date = formatDateYMD(new Date())) {
 /** cron から：SORAに送る（push 1通/日） */
 export async function sendMorningBrief(env) {
   if ((env.MORNING_BRIEF || "on") === "off") return { skipped: true };
-  const text = await buildMorningBrief(env);
+  let text = await buildMorningBrief(env);
+  // TimeTree同期の変更（前回の要約以降）をまとめて載せる
+  try {
+    const ch = (await env.KV.get("tt:changes", "json")) || [];
+    if (ch.length) { text += `\n\n📅 TimeTree同期（前回以降）\n${ch.slice(0, 15).join("\n")}${ch.length > 15 ? `\nほか${ch.length - 15}件` : ""}`; await env.KV.delete("tt:changes"); }
+  } catch {}
   const id = env.LIFF_DASH_ID || env.LIFF_ID;
   const msg = { type: "text", text };
   const messages = [msg];

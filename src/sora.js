@@ -255,12 +255,31 @@ export async function handleSoraEvent(env, event) {
     }
     if (cmd === "新着確認") {
       // 結果は返事（reply）で返す＝送信数にカウントされない。処理が長引いて返事に失敗したときだけ push
-      const r = await pollGuestMessages(env, { force: args[0] === "再" });
+      const r = await pollGuestMessages(env, { force: args[0] === "再", noPush: true }); // 新しいカードもこの返信で見せる（通数を使わない）
       const rs = r.results || [];
       const n = { card: rs.filter(x => x.cardId).length, auto: rs.filter(x => x.auto).length, skip: rs.filter(x => x.skipped).length, err: rs.filter(x => x.error).length };
       const lines = rs.map(x => x.cardId ? `📩 カード: ${x.category}` : x.auto ? `💬 ${x.auto}` : x.skipped ? `✔ ${x.skipped}` : `⚠️ ${x.error}`).slice(0, 10).join("\n");
-      const msg = withMenu(`未読 ${r.checked ?? 0} 件（カード${n.card}・一言返し${n.auto}・不要${n.skip}${n.err ? `・エラー${n.err}` : ""}）${lines ? "\n" + lines : ""}`);
-      try { await line.replyRaw(event.replyToken, [msg]); } catch { await line.pushMessages(sourceId, [msg]); }
+      // 未表示（push できなかった）カードを返信（無料）で4件まで見せる
+      const { pendingCards, buildCardMessage } = await import("./approval.js");
+      const und = await pendingCards(env, { onlyUndelivered: true });
+      const show = und.slice(0, 4);
+      const msg = withMenu(`未読 ${r.checked ?? 0} 件（カード${n.card}・一言返し${n.auto}・不要${n.skip}${n.err ? `・エラー${n.err}` : ""}）${lines ? "\n" + lines : ""}${und.length ? `\n\n📩 まだ表示していないカード ${und.length} 件${und.length > 4 ? "（4件ずつ表示。続きはもう一度「新着確認」）" : ""}` : ""}`);
+      try {
+        await line.replyRaw(event.replyToken, [msg, ...show.map(buildCardMessage)]);
+        const { cards } = await import("./store.js");
+        for (const c of show) { c.undelivered = false; await cards.put(env.KV, c.id, c); }
+      } catch { try { await line.pushMessages(sourceId, [msg]); } catch {} }
+      return;
+    }
+    if (cmd === "保留カード") {
+      // 返事待ちのカードを古い順に4件ずつ（返信なので通数を使わない）。「保留カード 2」で2ページ目
+      const { pendingCards, buildCardMessage } = await import("./approval.js");
+      const all = await pendingCards(env);
+      const page = Math.max(1, parseInt(args[0]) || 1), show = all.slice((page - 1) * 4, page * 4);
+      const head = withMenu(all.length ? `📩 返事待ちのカード ${all.length} 件（${(page - 1) * 4 + 1}〜${(page - 1) * 4 + show.length}件目）${all.length > page * 4 ? `\n続きは「保留カード ${page + 1}」` : ""}` : "返事待ちのカードはありません。");
+      await line.replyRaw(event.replyToken, [head, ...show.map(buildCardMessage)]);
+      const { cards } = await import("./store.js");
+      for (const c of show) if (c.undelivered) { c.undelivered = false; await cards.put(env.KV, c.id, c); }
       return;
     }
     if (cmd === "FAQ追加") {

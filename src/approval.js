@@ -54,12 +54,14 @@ export async function sweepPendingCards(env, token, { max = 10 } = {}) {
   return { pending: cards.length, checked, closed, expired };
 }
 
-export async function pollGuestMessages(env, { force = false } = {}) {
+export async function pollGuestMessages(env, opts = {}) {
+  const { force = false } = opts;
   if (!env.KV) return { error: "KV未設定" };
   const token = await getToken(env);
   try { const sw = await sweepPendingCards(env, token); if (sw.closed || sw.expired) console.log("sweep cards", JSON.stringify(sw)); } catch (e) { console.warn("sweep error", e.message); }
   const msgs = await fetchUnreadGuestMessages(token);
   const results = [];
+  const notes = [];
   for (const m of msgs) {
     if (!force && (await seen.has(env.KV, m.id))) { results.push({ id: m.id, skipped: "処理済み" }); continue; }
     await seen.mark(env.KV, m.id);
@@ -68,9 +70,25 @@ export async function pollGuestMessages(env, { force = false } = {}) {
     } catch (e) {
       console.error("承認カード作成エラー:", e.message, e.stack);
       results.push({ id: m.id, error: e.message });
-      try { await sora(env).push(env.SORA_TARGET_ID || env.OWNER_USER_ID, `⚠️ 返信案の作成に失敗\n予約 ${m.bookingId}\n${e.message}`); } catch {}
+      notes.push(`⚠️ 返信案の作成に失敗\n予約 ${m.bookingId}\n${e.message.slice(0, 150)}`);
     }
   }
+  // カードとエラーを1回のpushにまとめる（1回のpush＝1通。メッセージは最大5件まで）
+  const newCards = results.filter(r => r.card).map(r => r.card);
+  if (opts.noPush) { for (const c of newCards) { c.undelivered = true; await cards.put(env.KV, c.id, c); } } // 呼び出し元（SORAの「新着確認」）が返信で見せる
+  if (!opts.noPush && (newCards.length || notes.length)) {
+    const msgsOut = [...newCards.map(buildCardMessage), ...(notes.length ? [{ type: "text", text: notes.join("\n\n").slice(0, 4900) }] : [])];
+    for (let i = 0; i < msgsOut.length; i += 5) {
+      const chunk = msgsOut.slice(i, i + 5);
+      try { await sora(env).pushMessages(env.SORA_TARGET_ID || env.OWNER_USER_ID, chunk); }
+      catch (e) {
+        // 通数の上限などで送れなかったカードは「未表示」にしておき、SORAの「新着確認」「保留カード」への返信（無料）で見せる
+        console.error("カード送信失敗", e.message.slice(0, 120));
+        for (const c of newCards.slice(i, i + 5)) { c.undelivered = true; await cards.put(env.KV, c.id, c); }
+      }
+    }
+  }
+  for (const r of results) delete r.card;
   return { checked: msgs.length, results };
 }
 
@@ -146,8 +164,8 @@ async function handleGuestMessage(env, token, m) {
     guestMessage: text, draft, status: "pending", createdAt: new Date().toISOString()
   };
   await cards.put(env.KV, cardId, card);
-  await sora(env).pushMessages(env.SORA_TARGET_ID || env.OWNER_USER_ID, [buildCardMessage(card)]);
-  return { id: m.id, cardId, category: draft.category, needsHuman: draft.needsHuman, model: draft.model };
+  // 送信はまとめて行う（pollGuestMessages）。5分の間に届いた複数のカードを1回のpush＝1通で送るため
+  return { id: m.id, cardId, card, category: draft.category, needsHuman: draft.needsHuman, model: draft.model };
 }
 
 // ---- テスト用：Beds24に触らずカードを作る ----
@@ -305,4 +323,11 @@ async function sendAndRecord(env, card, replyText, meta) {
   await cards.put(env.KV, card.id, card);
   // 人が書いた／直した返信だけを学習例にする（AI案をそのまま送った場合は重複になるので保存しない）
   if (meta.how === "manual") await examples.add(env.KV, card.property, card.guestMessage, replyText, { channel: card.channel });
+}
+
+/** 返事待ちのカード（古い順）。onlyUndelivered=true なら通数の上限などで届いていないものだけ */
+export async function pendingCards(env, { onlyUndelivered = false } = {}) {
+  const l = await env.KV.list({ prefix: "card:" });
+  const all = (await Promise.all(l.keys.slice(0, 300).map(k => env.KV.get(k.name, "json")))).filter(c => c && c.status === "pending" && !c.test && (!onlyUndelivered || c.undelivered));
+  return all.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
